@@ -1,7 +1,7 @@
 '''
 Author: Wenbin FAN
 First Release: Oct. 30, 2019
-Modified: Nov. 30, 2019
+Modified: Dec. 4, 2019
 Verision: 1.2
 
 [Intro]
@@ -28,7 +28,7 @@ Great thanks to Yang Hui and Fang Junhua.
 
 [Bug Fixing]
 V1.2:
-1) PMF: Plot range modified to (min, max)
+1) PMF: Plot range modified.
 '''
 
 import os
@@ -242,8 +242,9 @@ def plot_pmf(path):
 
         # Choose the fit range of this plot
         plt.xlim(xi[0], xi[-1])
-        plt.ylim(min(pmf) - max(pmf) * 0.1,
-                 max(pmf) * 1.1)  # The upper adds 0.1*max(pmf), the lower region should be added the same.
+        yRange = max(pmf) - min(pmf)
+        plt.ylim(min(pmf) - yRange * 0.1,
+                 max(pmf) + yRange * 0.1)  # adds 0.1*yRange to the top and bottom
 
         plt.plot(xi, pmf, c=color[0])
 
@@ -379,8 +380,7 @@ def plot_overlap_density(path, xiList):
     plt.ylabel('Reaction Coordinate')
 
     plt.colorbar()
-    plt.title('The Evolution of Normalized Population')
-    # plt.show()
+    # plt.title('The Evolution of Normalized Population')
     plot_save(title)
 
 

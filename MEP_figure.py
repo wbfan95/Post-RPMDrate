@@ -41,10 +41,6 @@ color = ['#00447c', '#ae0d16', '#47872c', '#800964']
 # SHU Blue, Weichang Red, Willow Green, SHU Purple
 # This color scheme can be easily obtained on the official website `vi.shu.edu.cn`.
 
-'''
-/share/apps/gold/ps2019_up4/intelpython3/pkgs/matplotlib-3.0.3-py36_4/lib/python3.6/site-packages/matplotlib/mpl-data/fonts/ttf
-'''
-
 
 def plot_parameters():
     plt.figure(figsize=(4, 3))

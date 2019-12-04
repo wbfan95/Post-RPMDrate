@@ -1,15 +1,15 @@
 '''
 Program: Plot bond length from .xyz file
 Author: Wenbin, FAN
-Update: Nov. 3, 2019
+
+V 1.1 # 20191204 13:20:56 Wenbin, FAN @ SHU
+1) Plot OHCH4 system only.
 '''
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 color = ['#00447c', '#ae0d16', '#47872c', '#800964']
-
-
 # SHU Blue, Weichang Red, Willow Green, SHU Purple
 # This color scheme can be easily obtained on the official website `vi.shu.edu.cn`.
 
@@ -26,12 +26,11 @@ def plotPara():
 
 
 def plotSave(title):
-    plt.legend()
     plt.tight_layout()
     foo_fig = plt.gcf()  # 'get current figure'
     foo_fig.savefig(title + '.png', format='png', dpi=600)
     plt.show()
-    plt.clf()
+    # plt.clf()
 
 
 def readCoord(file=None, Nbeads=None):
@@ -44,6 +43,7 @@ def readCoord(file=None, Nbeads=None):
 
     if Nbeads is None:
         Nbeads = int(input('Please input the number of beads (default `1`): \n') or '1')
+    Nbeads = np.int(Nbeads)
     Nab = np.int(flines[0])
     Natoms = np.int(Nab / Nbeads)
     Nframe = np.int(len(flines) / (Nab + 2))  # `2` is amount line and title line.
@@ -57,10 +57,12 @@ def readCoord(file=None, Nbeads=None):
 
     # print('Information about current trajectory: ')
     print(r'[INFO] Atoms: {}, Beads: {}, frames: {}'.format(Natoms, Nbeads, Nframe))
-    global coord
+    global coord, titles
     coord = np.zeros([3, Natoms, Nbeads, Nframe])
+    titles = np.zeros(Nframe)
 
     for frame in range(Nframe):
+        titles[frame] = flines[frame * (Nab + 2) + 1]
         for atom in range(Natoms):
             for bead in range(Nbeads):
                 basicFrame = frame * (Nab + 2)
@@ -93,7 +95,7 @@ def getCentroid(coord):
 
 def getBondLen(a, b):
     # assert np.shape(a) == np.shape(b)
-    print('[INFO] Computing bond length {} -- {}...'.format(a, b))
+    print('[INFO] Computing bond length {}({}) -- {}({})...'.format(a, atomList[a], b, atomList[b]))
 
     dist = np.zeros(Nframe)
     for frame in range(Nframe):
@@ -113,44 +115,95 @@ def getDist(a, b):
 
 
 def getBeadBondLen(a, b):
-    print('[INFO] Computing bond length... ')
+    print('[INFO] Computing bond length {}({}) -- {}({})...'.format(a, atomList[a], b, atomList[b]))
 
     beadDist = np.zeros([Nframe, Nbeads])
-    minDist = np.zeros(Nframe)
-    maxDist = np.zeros(Nframe)
+    # minDist = np.zeros(Nframe)
+    # maxDist = np.zeros(Nframe)
     for frame in range(Nframe):
         for bead in range(Nbeads):
             beadDist[frame, bead] = getDist(coord[:, a, bead, frame], coord[:, b, bead, frame])
-        minDist[frame] = np.min(beadDist[frame, :])
-        maxDist[frame] = np.max(beadDist[frame, :])
+        # minDist[frame] = np.min(beadDist[frame, :])
+        # maxDist[frame] = np.max(beadDist[frame, :])
 
-    return beadDist, maxDist, minDist
+    return beadDist  # , maxDist, minDist
 
 
 def plotBond(atomA, atomB):
     bondc = getBondLen(atomA, atomB)
     plotPara()
-    plt.xlim(0, Nframe)
+    plt.xlim(0, Nframe - 1)
 
     label = '{} and {}'.format(atomList[atomA], atomList[atomB])
 
     if Nbeads > 1:
-        bond, maxDist, minDist = getBeadBondLen(atomA, atomB)
-        plt.plot(maxDist, c=color[0], lw=0.5)
-        plt.plot(minDist, c=color[0], lw=0.5)
-        plt.fill_between(list(range(Nframe)), maxDist, minDist, color=color[0], alpha=0.2, lw=0)
-        plt.plot(bondc, c=color[1], label=label)
+        bond = getBeadBondLen(atomA, atomB)
+        maxDist = np.max(bond, axis=1)
+        minDist = np.min(bond, axis=1)
+        meanDist = np.mean(bond, axis=1)
 
+        plt.fill_between(list(range(Nframe)), maxDist, minDist, color=color[0], alpha=0.2, lw=0)
+        plt.plot(bondc, c=color[0], label=r'$r_{\mathrm{c}}$')
+        plt.plot(meanDist, ':', c=color[1], label=r'$\bar{r}$')
+
+        plt.legend()
         plt.xlabel('Frame')
-        plt.ylabel('Bond Length / Å')
+        plt.ylabel('Bond Length of {} / Å'.format(label))
         plotSave('bondLength')
     elif Nbeads == 1:
-        plt.plot(bondc, c=color[0], label=label)
+        plt.plot(bondc, c=color[0])
 
         plt.xlabel('Frame')
-        plt.ylabel('Bond Length / Å')
+        plt.ylabel('Bond Length of {} / Å'.format(label))
         plotSave('bondLength')
 
+
+def plotBeads():
+    end = ''
+    while True:
+        if end != 'end' or '0' or 'exit':
+            end = input('Please input the TWO order of atom (from `0`, e.g. `1 2`): \n')
+            atom = end.split()
+            assert len(atom) == 2
+            plotBond(int(atom[0]), int(atom[1]))
+        else:
+            print('[INFO] Exit...')
+            break
+
+
+# Unfinished # 20191204 12:18:51 Wenbin, FAN @ SHU
+def plotMulti(list):
+    global Nbeads
+    Nbeads = 1
+
+    for i in list:  # each group was
+        assert len(list[i]) == 2
+
+    length = len(list)
+
+
+def plotOHCH4():
+    bondCH = (getBondLen(5, 1) + getBondLen(5, 2) + getBondLen(5, 3) + getBondLen(5, 4)) / 4.0
+    bondOH = getBondLen(0, 6)
+    bondCO = getBondLen(5, 6)
+
+    plotPara()
+
+    ticks = np.array(titles, dtype=float)
+
+    plt.plot(ticks, bondOH, label='O - H', c=color[1])
+    plt.plot(ticks, bondCO, label='C - O', c=color[0])
+    plt.plot(ticks, bondCH, label='C - other H', c=color[2])
+
+    plt.legend()
+    plt.xlabel(r'$\xi$')
+    plt.ylabel('Bond Length / Å')
+
+    plt.xlim(min(ticks), max(ticks))
+
+    plotSave('bondLength')
+
+    plt.show()
 
 def main():
     path = input('Please input the path of `.xyz`: \n')
@@ -158,9 +211,8 @@ def main():
     coord, atomList = readCoord(path)
     centr = getCentroid(coord)
 
-    atom = input('Please input the TWO order of atom (from `0`, e.g. `1 2`): \n').split()
-    assert len(atom) == 2
-    plotBond(int(atom[0]), int(atom[1]))
+    plotOHCH4()
+
 
 
 main()
