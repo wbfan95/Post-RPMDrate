@@ -64,16 +64,37 @@ def findOutputFile(path):
             return path + '/' + file
 
 
-def extractData(filePath):
+def extractAtomList(filePath):
+    inRange = None
+    global atomList
+    atomList = []
+
+    f = open(filePath, 'r')
+    for line in f:
+        if inRange == None and line == '            Atom     Atomic number    Atomic Symbol     Mass (amu)\n':
+            inRange = True
+        elif inRange == True:
+            if len(line.split()) == 4:
+                atomList.append(line.split()[2])
+            elif line == '--------------------------------------------------------------------------------\n':
+                inRange = False
+        elif inRange == False:
+            break
+
+    f.close()
+    return atomList
+
+
+def extractMEP(filePath):
     newPath = filePath.replace('.fu6', '') + '_MEP.txt'
 
     if os.path.exists(newPath):
         os.remove(newPath)
 
-    outJudge = False
+    outRange = False
     with open(filePath, 'r') as f, open(newPath, 'w') as g:
         for line in f:
-            if outJudge:
+            if outRange:
                 if line[:10] == ' *********':
                     break
                 elif line[:10] == ' The Class':  # `The Classical barrier is less than zero!` # Not 'no barrier'!
@@ -83,9 +104,106 @@ def extractData(filePath):
                     print(line, file=g, end='')
             else:
                 if line[:27] == '    Classical and adiabatic':
-                    outJudge = True
+                    outRange = True
                     print(line, file=g, end='')
     return newPath
+
+
+def extractPathCoord(filePath):
+    newPath = filePath.replace('.fu6', '') + '_PathCoord.xyz'
+    enePath = filePath.replace('.fu6', '') + '_PathEnergy.txt'
+
+    for i in [newPath, enePath]:
+        if os.path.exists(i):
+            os.remove(i)
+
+    # Determine whether there will be coordinates
+    PRINTSTEP = False
+    with open(filePath, 'r') as f:
+        for line in f:
+            if line == '    PRINTSTEP:  print geom, v, and grad at each step             on \n':
+                print('[INFO] `PRINTSTEP` is turned on. ')
+                PRINTSTEP = True
+                break
+            elif line == '    PRINTSTEP:  print geom, v, and grad at each step             off\n':
+                print('[ERROR] `PRINTSTEP` is turned off! No coordinates will be exported. ')
+                PRINTSTEP = False
+                break
+            else:
+                PRINTSTEP = None
+
+    if PRINTSTEP == None:
+        print('[ERROR] Your `.fu6` file maybe not integrity! ')
+        return
+
+    # Find the number of steps
+    Npoints = 0
+    twoSide = 1
+    with open(filePath, 'r') as f:
+        for line in f:
+            if line[:36] == '     number of integration steps was':
+                num = np.int(line.split()[-1])
+                print('[INFO] There are {} points in direction {}. '.format(num, twoSide))
+                Npoints += num
+                twoSide += 1
+                if twoSide == 3:
+                    break
+
+    # Create blank array: 3 * Natoms * Npoints *
+    Natoms = len(atomList)
+    coord = np.zeros([3, Natoms, Npoints])
+    xiEne = np.zeros([2, Npoints])  # (xi/amu^{1/2}Bohr) + (energy/Hartree)
+
+    # read all coordinates from file
+    inRange = None  # determine whether in the range of path coordinates
+    inAtom = 0  # determin whether in the range of atom
+    countPoints = 0
+    if PRINTSTEP == True:
+        f = open(filePath, 'r')
+        for line in f:
+            if inRange == None and line == '                       (DX,DY,DZ in unscaled hartree/bohr)\n':
+                inRange = True
+            if inRange == True:
+                if line[:4] == ' s =':
+                    lineXiEne = line.split()
+                    xiEne[:, countPoints] = [lineXiEne[2], lineXiEne[5]]
+                if inAtom > 0 and inAtom <= Natoms:
+                    xyzFloats = [np.float(x) * 0.52191772E0 for x in line.split()[1:]]  # `1:4` is also okay!
+                    coord[:, inAtom - 1, countPoints] = xyzFloats
+                    inAtom += 1
+                elif line == '  Atom           X              Y              Z\n':
+                    inAtom = 1
+                    countPoints += 1
+                if countPoints == Npoints:
+                    inRange = False
+                    break
+            elif inRange == False:
+                break
+    f.close()
+
+    # sort coordinates by xi
+    orderXi = np.argsort(xiEne, axis=1)
+    for i in range(3):
+        for j in range(Natoms):
+            temp = coord[i, j, :]
+            coord[i, j, :] = np.take_along_axis(temp, orderXi[0, :], axis=0)
+    xiEne = np.sort(xiEne, axis=1)
+
+    # write coordinates to file
+    g = open(newPath, 'w')
+    h = open(enePath, 'w')
+
+    for points in range(Npoints):
+        g.write('{}\n'.format(Natoms))
+        title = '{}\t{}\n'.format(xiEne[0, points], xiEne[1, points])
+        g.write(title)
+        h.write(title)
+        for atom in range(Natoms):
+            g.write('{0:}\t{1:.6f}\t{2:.6f}\t{3:.6f}\n'.
+                    format(atomList[atom], coord[0, atom, points], coord[1, atom, points], coord[2, atom, points]))
+
+    g.close()
+    h.close()
 
 
 def readData(filePath):
@@ -164,7 +282,7 @@ def plotMEP(filePath):
     VZPE = list(a.iloc[:, 3])
 
     plt.plot(xi, V, c=color[0], label='MEP')
-    plt.plot(xi, VZPE, dashes=[3, 3], c=color[0], label='VaG')
+    plt.plot(xi, VZPE, dashes=[3, 3], c=color[0], label='$V_{\mathrm{a}}^{\mathrm{G}}$')
     plt.plot(xi, ZPE, ':', c=color[0], label='ZPE')
 
     plt.legend(loc="best")
@@ -242,11 +360,17 @@ def main(path=None):
     if path is None:
         path = input('Please input the folder consisting the output of Polyrate: \n')
     resultPath = findOutputFile(path)
-    MEPPath = extractData(resultPath)
-    dataPath, freqPath = readData(MEPPath)
+    atomList = extractAtomList(resultPath)
 
-    plotMEP(dataPath)
-    plotFreq(freqPath)
+    print(atomList)
+
+    extractPathCoord(resultPath)
+
+    # MEPPath = extractMEP(resultPath)
+    # dataPath, freqPath = readData(MEPPath)
+    # 
+    # plotMEP(dataPath)
+    # plotFreq(freqPath)
 
 
 main(os.getcwd())
