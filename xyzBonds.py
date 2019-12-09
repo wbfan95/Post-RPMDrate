@@ -171,15 +171,24 @@ def plotBeads():
             break
 
 
-# Unfinished # 20191204 12:18:51 Wenbin, FAN @ SHU
-def plotMulti(list):
-    global Nbeads
-    Nbeads = 1
+def corrFunc(array1d):
+    ave = np.mean(array1d)  # <x>, mean
+    array1d = array1d - ave
 
-    for i in list:  # each group was
-        assert len(list[i]) == 2
+    sqr = 0e0  # <x^2>
+    for i in array1d:
+        sqr += i ** 2
+    sqr /= len(array1d)
 
-    length = len(list)
+    length = len(array1d)
+    halflen = np.int(length / 2.0)
+
+    corr = np.zeros(halflen)
+    for i in range(halflen):
+        for j in range(length - i):
+            corr[i] += array1d[j] * array1d[i + j]
+
+    return corr / sqr
 
 
 def plotOHCH4():
@@ -205,15 +214,88 @@ def plotOHCH4():
 
     plt.show()
 
+
+def plotH3():
+    # Bond Length
+    bond12 = getBondLen(0, 1)
+    bond23 = getBondLen(1, 2)
+    bond13 = getBondLen(0, 2)
+
+    plotPara()
+    plt.plot(bond12, label='H1 - H2', c=color[0])
+    plt.plot(bond23, label='H2 - H3', c=color[1])
+    plt.plot(bond13, label='H1 - H3', c=color[2])
+
+    plt.legend()
+    plt.xlabel(r'Frames')
+    plt.ylabel('Bond Length / Å')
+    plt.xlim(0, Nframe)
+
+    plotSave('bondLength')
+    plt.show()
+
+    # Correlation Function
+    plotPara()
+    corr12 = corrFunc(bond12)
+    corr23 = corrFunc(bond23)
+    corr13 = corrFunc(bond13)
+
+    plt.plot(corr12, label='H1 - H2', c=color[0])
+    plt.plot(corr23, label='H2 - H3', c=color[1])
+    plt.plot(corr13, label='H1 - H3', c=color[2])
+
+    plt.legend()
+    plt.xlabel(r'Frames')
+    plt.ylabel('Correlation Function')
+    plt.xlim(0, Nframe)
+
+    plotSave('CorrFunc')
+    plt.show()
+
+
+def plotMgH2():
+    # Bond Length
+    bond12 = getBondLen(0, 1)
+    bond23 = getBondLen(1, 2)
+
+    plotPara()
+    plt.plot(bond12, label='Mg — H', c=color[0])
+    plt.plot(bond23, label="Mg — H'", c=color[1])
+
+    plt.legend()
+    plt.xlabel(r'Frames')
+    plt.ylabel('Bond Length / Å')
+    plt.xlim(0, Nframe)
+
+    plotSave('bondLength')
+    plt.show()
+
+    # Correlation Function
+    plotPara()
+    corr12 = corrFunc(bond12)
+    corr23 = corrFunc(bond23)
+
+    plt.plot(corr12, label='Mg — H', c=color[0])
+    plt.plot(corr23, label="Mg — H'", c=color[1])
+
+    plt.legend()
+    plt.xlabel(r'Frames')
+    plt.ylabel('Correlation Function')
+    plt.xlim(0, Nframe)
+
+    plotSave('CorrFunc')
+    plt.show()
+
+
 def main():
     path = input('Please input the path of `.xyz`: \n')
 
     coord, atomList = readCoord(path)
     centr = getCentroid(coord)
 
-    plotOHCH4()
-
-
+    # plotOHCH4()
+    # plotH3()
+    plotMgH2()
 
 main()
 
