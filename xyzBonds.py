@@ -62,7 +62,7 @@ def readCoord(file=None, Nbeads=None):
     titles = np.zeros(Nframe)
 
     for frame in range(Nframe):
-        titles[frame] = flines[frame * (Nab + 2) + 1]
+        titles[frame] = flines[frame * (Nab + 2) + 1].split()[-1]
         for atom in range(Natoms):
             for bead in range(Nbeads):
                 basicFrame = frame * (Nab + 2)
@@ -172,6 +172,7 @@ def plotBeads():
 
 
 def corrFunc(array1d):
+    print('[INFO] Computing correlation function... ')
     ave = np.mean(array1d)  # <x>, mean
     array1d = array1d - ave
 
@@ -240,14 +241,15 @@ def plotH3():
     corr23 = corrFunc(bond23)
     corr13 = corrFunc(bond13)
 
-    plt.plot(corr12, label='H1 - H2', c=color[0])
-    plt.plot(corr23, label='H2 - H3', c=color[1])
-    plt.plot(corr13, label='H1 - H3', c=color[2])
+    plt.plot(corr12, label='H1 — H2', c=color[0])
+    plt.plot(corr23, label='H2 — H3', c=color[1])
+    plt.plot(corr13, label='H1 — H3', c=color[2])
 
     plt.legend()
     plt.xlabel(r'Frames')
     plt.ylabel('Correlation Function')
-    plt.xlim(0, Nframe)
+    plt.xlim(0, Nframe / 2)
+    plt.yticks([0])
 
     plotSave('CorrFunc')
     plt.show()
@@ -281,7 +283,8 @@ def plotMgH2():
     plt.legend()
     plt.xlabel(r'Frames')
     plt.ylabel('Correlation Function')
-    plt.xlim(0, Nframe)
+    plt.xlim(0, Nframe / 2)
+    plt.yticks([0])
 
     plotSave('CorrFunc')
     plt.show()

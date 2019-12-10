@@ -137,19 +137,22 @@ def extractPathCoord(filePath):
         return
 
     # Find the number of steps
-    Npoints = 0
-    twoSide = 1
+    Npoints = []
+    twoSide = 0
     with open(filePath, 'r') as f:
         for line in f:
             if line[:36] == '     number of integration steps was':
                 num = np.int(line.split()[-1])
                 print('[INFO] There are {} points in direction {}. '.format(num, twoSide))
-                Npoints += num
+                Npoints.append(num)
                 twoSide += 1
-                if twoSide == 3:
+                if twoSide == 2:
                     break
+    NpointsLeft = Npoints[0]
+    NpointsRight = Npoints[1]
+    Npoints = np.sum(Npoints)
 
-    # Create blank array: 3 * Natoms * Npoints *
+    # Create blank array: 3 * Natoms * Npoints
     Natoms = len(atomList)
     coord = np.zeros([3, Natoms, Npoints])
     xiEne = np.zeros([2, Npoints])  # (xi/amu^{1/2}Bohr) + (energy/Hartree)
@@ -181,6 +184,10 @@ def extractPathCoord(filePath):
                 break
     f.close()
 
+    # delete first step in each direction # for they are the coordinates that user input which are artificial.
+    coord = np.delete(coord, [0, NpointsRight], axis=2)
+    xiEne = np.delete(xiEne, [0, NpointsRight], axis=1)
+
     # sort coordinates by xi
     orderXi = np.argsort(xiEne, axis=1)
     for i in range(3):
@@ -193,12 +200,12 @@ def extractPathCoord(filePath):
     g = open(newPath, 'w')
     h = open(enePath, 'w')
 
-    for points in range(Npoints):
+    for points in range(Npoints - 2):
         g.write('{}\n'.format(Natoms))
-        title = '{}\t{}\n'.format(xiEne[0, points], xiEne[1, points])
+        title = '{0:.6f} {1:.6f} \n'.format(xiEne[0, points], xiEne[1, points])
         g.write(title)
         h.write(title)
-        for atom in range(Natoms):
+        for atom in range(Natoms):  # [1,3,4,5,6,2,0]: # My OHCH4 order
             g.write('{0:}\t{1:.6f}\t{2:.6f}\t{3:.6f}\n'.
                     format(atomList[atom], coord[0, atom, points], coord[1, atom, points], coord[2, atom, points]))
 
@@ -333,7 +340,8 @@ def calc2ndDer(xi, V):
     # subFig.minorticks_on()
     # plt.setp(subFig, xlim=[min(ximax), max(ximax)])
 
-    print('The d^2y/dx^2 at xi = {0:.3e} is {1:.6f}. \nFive times of this value is {2:.6f}. '.format(root, dd, dd * 5))
+    print('[INFO] The d^2y/dx^2 at xi = {0:.3e} is {1:.6f}. \n'
+          '       Five times of this value is {2:.6f}. '.format(root, dd, dd * 5))
 
 
 def plotFreq(path):
@@ -343,7 +351,7 @@ def plotFreq(path):
     num = len(a.columns) - 1
 
     for rank in range(num):
-        plt.plot(a.iloc[:, 0], a.iloc[:, rank + 1], c=color[0], lw=1)
+        plt.plot(a.iloc[:, 0], a.iloc[:, rank + 1], lw=1)
 
     plt.xlabel('$s$ (amu$^{1/2}$Bohr)')
     plt.ylabel('Frequency (10$^3$ cm$^{-1}$)')
@@ -362,15 +370,14 @@ def main(path=None):
     resultPath = findOutputFile(path)
     atomList = extractAtomList(resultPath)
 
-    print(atomList)
+    print('[INFO] Atoms: ', atomList)
 
     extractPathCoord(resultPath)
 
-    # MEPPath = extractMEP(resultPath)
-    # dataPath, freqPath = readData(MEPPath)
-    # 
-    # plotMEP(dataPath)
-    # plotFreq(freqPath)
+    MEPPath = extractMEP(resultPath)
+    dataPath, freqPath = readData(MEPPath)
+    plotMEP(dataPath)
+    plotFreq(freqPath)
 
 
 main(os.getcwd())
