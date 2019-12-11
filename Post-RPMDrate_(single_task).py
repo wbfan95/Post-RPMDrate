@@ -2,7 +2,7 @@
 Author: Wenbin FAN
 First Release: Oct. 30, 2019
 Modified: Dec. 4, 2019
-Verision: 1.2
+Verision: 1.3
 
 [Intro]
 Plot
@@ -11,6 +11,7 @@ Plot
 # (3) potential of mean force,
 # (4) recrossing factor,
 # (5) the evolution of normalized population of xi,
+# (6) the force constant,
 for a single task.
 
 [Usage]
@@ -27,6 +28,9 @@ Thanks for using this python program, with the respect to my supervisor Prof. Yo
 Great thanks to Yang Hui and Fang Junhua.
 
 [Bug Fixing]
+V1.3:
+1) read information from input file,
+2) add a plot for force constant.
 V1.2:
 1) PMF: Plot range modified.
 '''
@@ -37,18 +41,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 color = ['#00447c', '#ae0d16', '#47872c', '#800964']
-
-
 # SHU Blue, Weichang Red, Willow Green, SHU Purple
 # This color scheme can be easily obtained on the official website `vi.shu.edu.cn`.
 
 def input_path():
-    path = input('Please input the result folder: \n')
+    path = input('Please input the folder with `submitting script` and your input file: \n')
     return path
 
 
 def plot_parameters(title):
-    print('Plotting {}! '.format(title))
+    print('[INFO] Plotting {}! '.format(title))
     plt.figure(figsize=(4, 3))
     plt.rcParams["font.family"] = "Times New Roman"
     plt.rcParams["mathtext.fontset"] = "stix"  # The font closet to Times New Roman
@@ -146,19 +148,19 @@ def plot_overlap(path, xiList):
                 plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
 
     # Plot summation and difference
-    plt.plot(x_new, y_sum, lw=1, c=color[0], label='Summation of all populations')  # SHU Blue
+    plt.plot(x_new, y_sum, lw=1, c=color[0], label=mylabel)  # label='Summation of all populations')  # SHU Blue
 
     # plt.xlabel('Reaction Coordinate / Å')
     plt.xlabel('Reaction Coordinate')
     plt.ylabel('Population')
-    # plt.legend(loc="best") # No legend
 
     plt.xlim(xiMin - extend, xiMax + extend)
     # plt.ylim(0, maxPop*1.1)
-    # plt.ylim(0, max(y_sum)*1.1)
+    plt.ylim(0, max(y_sum) * 1.1)
 
     plt.yticks([])  # No ticks and labels in y axis
 
+    plt.legend(loc="best")
     plot_save(title)
 
 
@@ -246,7 +248,7 @@ def plot_pmf(path):
         plt.ylim(min(pmf) - yRange * 0.1,
                  max(pmf) + yRange * 0.1)  # adds 0.1*yRange to the top and bottom
 
-        plt.plot(xi, pmf, c=color[0])
+        plt.plot(xi, pmf, c=color[0], label=mylabel)
 
         # # plot a zoomed subfigure
         # xiMaxIndex = pmf.index(max(pmf)) # the position of maximum
@@ -271,6 +273,7 @@ def plot_pmf(path):
         #
         # plt.setp(subfig, xlim=[min(ximax), max(ximax)])
 
+        plt.legend(loc="best")
         plot_save(title)
 
 
@@ -307,10 +310,12 @@ def plot_rexFactor(path):
         # plt.xscale('log')
 
         plt.xlim(time[0], time[-1])
-        # endRF = np.mean(kappa[-5:])
-        plt.axhline(y=kappa[-1], c=color[0], lw=0.5, linestyle='--')
+        # # endRF = np.mean(kappa[-5:])
+        # plt.axhline(y=kappa[-1], c=color[0], lw=0.5, linestyle='--')
 
-        plt.plot(time, kappa, c=color[0])
+        plt.plot(time, kappa, c=color[0], label=mylabel)
+
+        plt.legend(loc="best")
         plot_save(title)
 
 
@@ -384,17 +389,163 @@ def plot_overlap_density(path, xiList):
     plot_save(title)
 
 
-def main(path=None):
-    if path == None:
-        path = input_path()
-    xiList = get_xilist(path)
+def plotKForce():
+    plot_parameters('force constant')
 
-    plot_overlap(path, xiList)
-    plot_variance(path, xiList)
+    markerline, stemlines, baseline = \
+        plt.stem(xi_list, kforce_list, use_line_collection=True,
+                 basefmt=' ', markerfmt=' ', linefmt=color[0])
+    plt.setp(stemlines, 'linewidth', 0.5)
+    plt.scatter(xi_list, kforce_list, c=color[0], s=1, label=mylabel)
+
+    plt.ylabel('Force Constant ($T$ K$^{-1}$ eV)')
+    plt.xlabel('Reaction Coordinate')
+
+    # plt.xlim(min(xi_list), max(xi_list))
+    plt.ylim(0, max(kforce_list) * 1.1)
+    plot_save('kforce')
+
+
+def getBasicInfo(path):
+    # get the name of submitting script
+    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs']  # submitting script
+    subName = '';
+    subPath = ''
+    for i, name in enumerate(subList):
+        if os.path.exists(os.path.join(path, name)):
+            subName = name
+            subPath = os.path.join(path, name)
+            break
+    print('[INFO] Submitting arguments: ')
+
+    # read temperature and the number of beads
+    cmdLine = ''
+    f = open(subPath, 'r')
+    for line in f:
+        if line[:18] == 'python rpmdrate.py':
+            cmdLine = line.split()
+    del cmdLine[:2]  # delete `python` and `...rpmdrate.py`
+
+    # get the number of cores used
+    cores = 0
+    for i, cmd in enumerate(cmdLine):
+        if cmd == '-p':
+            cores = cmdLine[i + 1]
+            print('       Cores:            {}'.format(np.int(cores)))
+            del cmdLine[i:i + 2]
+            break
+    if cores == 0:
+        print('       Cores:            single')
+
+    # delete redirect output
+    for i, cmd in enumerate(cmdLine):
+        if cmd == '>' or cmd == '>>':
+            del cmdLine[i: i + 2]
+
+    # get input file, temperature and the number of beads
+    assert len(cmdLine) == 3, 'Your submitting script may be wrong! '
+    global inputFile, temp, Nbeads  # There will be probably more pythonic way. Tell me plz if you know!
+    inputFile = cmdLine[0]
+    temp = np.int(cmdLine[1])
+    Nbeads = np.int(cmdLine[2])
+
+    print('       Temperature:      {} K'.format(temp))
+    print('       Number of beads:  {}'.format(Nbeads))
+    print('       Input file:       {}'.format(inputFile))
+
+    return inputFile
+
+
+def getInput(folder):
+    path = os.path.join(folder, inputFile)
+
+    # skip `import PES`
+    f = open(path, 'r')
+    start = 0
+    inputContent = ''
+    for i, line in enumerate(f.readlines()):
+        if line[:5] == 'label' or line[:5] == 'react':
+            start = 1
+        if start == 1:
+            inputContent += line.replace('numpy', 'np')
+
+    # execute the input.py and get force constant
+    T = temp
+    try:
+        exec(inputContent)
+    except (NameError, TypeError, SyntaxError):
+        print('[ERROR] The input file {0!r} was invalid:'.format(path))
+        raise
+
+    global mylabel
+    mylabel = '{} K, {} beads'.format(temp, Nbeads)
+
+
+# Defination in RPMDrate:
+def reactants(atoms, reactant1Atoms, reactant2Atoms, Rinf):
+    pass
+
+
+def transitionState(geometry, formingBonds, breakingBonds):
+    pass
+
+
+def addEquivalentTransitionState(formingBonds, breakingBonds):
+    pass
+
+
+def thermostat(type, **kwargs):
+    pass
+
+
+def generateUmbrellaConfigurations(dt, evolutionTime, xi_list, kforce):
+    pass
+
+
+def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
+    global xi_list, kforce_list
+    xi_list = np.zeros(len(windows))
+    kforce_list = np.zeros(len(windows))
+    for i in range(len(windows)):
+        xi_list[i] = '{0:.4f}'.format(windows[i][0])
+        kforce_list[i] = windows[i][1] / temp
+    return xi_list, kforce_list
+
+
+def computePotentialOfMeanForce(windows=None, xi_min=None, xi_max=None, bins=5000):
+    pass
+
+
+def computeRecrossingFactor(dt, equilibrationTime, childTrajectories, childSamplingTime, childrenPerSampling,
+                            childEvolutionTime, xi_current=None, saveParentTrajectory=False,
+                            saveChildTrajectories=False):
+    pass
+
+
+def computeRateCoefficient():
+    pass
+
+
+def Window(xi, kforce, trajectories, equilibrationTime, evolutionTime):
+    return [np.float(xi), np.float(kforce)]
+
+
+def main(folder=None):
+    if folder == None:
+        folder = input_path()
+
+    getBasicInfo(folder)
+    getInput(folder)
+
+    path = os.path.join(folder, str(temp), str(Nbeads))
+    # xiList = get_xilist(path)
+
+    plotKForce()
+    plot_overlap(path, xi_list)
+    plot_variance(path, xi_list)
     plot_pmf(path)
     plot_rexFactor(path)
-    plot_overlap_density(path, xiList)
+    plot_overlap_density(path, xi_list)
 
 
 main()
-# main()
