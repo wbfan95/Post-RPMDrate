@@ -236,7 +236,7 @@ def plot_pmf(path):
         xiZeroIndex = list(xiAbs).index(min(np.abs(xi)))
         pmf = [(x - pmf[xiZeroIndex]) / 27.211 * 627.503 for x in pmf]  # shift and convert to kcal/mol
 
-        plt.xlabel(r'$Reaction Coordinate$')
+        plt.xlabel(r'tion Coordinate')
         plt.ylabel(r'$W(\xi)$ (kcal/mol)')
 
         # Choose the fit range of this plot
@@ -450,7 +450,8 @@ def plotPMFEvolution():
     for j in range(totalCycle):
         for i in range(bins - 1):
             f.write(
-                '{}\t{:.4f}\t{:.4f}\n'.format(umbInfo[2, j, 0] * delta * 1E-3, binList[i], PMFdata[i, j]))  # time to ns
+                '{:.4f}\t{:.4f}\t{:.4f}\n'.format(umbInfo[2, j, 0] * delta * 1E-3, binList[i],
+                                                  PMFdata[i, j]))  # time to ns
     f.close()
 
     # Plot PMF evolution
@@ -458,9 +459,9 @@ def plotPMFEvolution():
 
     a = pd.read_csv('PMF_data.txt', sep='\t', header=None)
 
-    traj = a.iloc[:, 0]
-    xibins = a.iloc[:, 1]
-    pmfvalue = a.iloc[:, 2]
+    traj = list(a.iloc[:, 0])
+    xibins = list(a.iloc[:, 1])
+    pmfvalue = list(a.iloc[:, 2])
 
     pmfMin = np.min(pmfvalue)
     pmfMax = np.max(pmfvalue)
@@ -472,8 +473,24 @@ def plotPMFEvolution():
 
     plt.xlabel(r'Time / ns')
     plt.ylabel(r'Reaction Coordinate')
-
     plot_save('PMF_evolution')
+
+    # 3D plot
+    # print(len(traj), (totalCycle, bins - 1))
+    X = np.reshape(traj, (totalCycle, bins - 1))
+    Y = np.reshape(xibins, (totalCycle, bins - 1))
+    Z = np.reshape(pmfvalue, (totalCycle, bins - 1))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, Z, cmap='Blues', linewidth=0.2, edgecolors='black')
+    ax.view_init(elev=20, azim=30)
+
+    ax.set_xlabel(r'Time (ns)')
+    ax.set_ylabel(r'Reaction Coordinate')
+    ax.set_zlabel(r'Energy (kcal/mol)')
+
+    plot_save('PMF_evolution_3D')
 
     # Plot free energy
     plot_parameters('free energy')
@@ -494,7 +511,7 @@ def plotPMFEvolution():
 
     ax1.legend(loc='center right')
 
-    plot_save('free_energy')
+    plot_save('PMF_free_energy')
 
 
 def getBasicInfo(path):
