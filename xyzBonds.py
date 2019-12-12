@@ -6,6 +6,8 @@ V 1.1 # 20191204 13:20:56 Wenbin, FAN @ SHU
 1) Plot OHCH4 system only.
 '''
 
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -189,8 +191,21 @@ def corrFunc(array1d):
         for j in range(length - i):
             corr[i] += array1d[j] * array1d[i + j]
 
-    return corr / sqr
+    # write correlation function into a ordered file &
+    # to further analysis
+    nameOrder = 1
+    while True:
+        if os.path.exists('corrFunc_{}.txt'.format(nameOrder)):
+            nameOrder += 1
+        else:
+            break
 
+    dataFile = open('corrFunc_{}.txt'.format(nameOrder), 'a')
+
+    for i, value in enumerate(corr):
+        dataFile.write('{0:.6f}\n'.format(value))
+
+    return corr / sqr
 
 def plotOHCH4():
     bondCH = (getBondLen(5, 1) + getBondLen(5, 2) + getBondLen(5, 3) + getBondLen(5, 4)) / 4.0
@@ -199,22 +214,40 @@ def plotOHCH4():
 
     plotPara()
 
-    ticks = np.array(titles, dtype=float)
+    ticks = np.linspace(0, Nframe * 10E-4, Nframe)
 
-    plt.plot(ticks, bondOH, label='O - H', c=color[1])
-    plt.plot(ticks, bondCO, label='C - O', c=color[0])
-    plt.plot(ticks, bondCH, label='C - other H', c=color[2])
+    plt.plot(ticks, bondOH, label='O — H', c=color[1])
+    plt.plot(ticks, bondCO, label='C — O', c=color[0])
+    plt.plot(ticks, bondCH, label='C — other H', c=color[2])
 
     plt.legend()
-    plt.xlabel(r'$\xi$')
+    plt.xlabel(r'Time / ps')
     plt.ylabel('Bond Length / Å')
 
     plt.xlim(min(ticks), max(ticks))
-
     plotSave('bondLength')
-
     plt.show()
 
+    # Correlation Function
+    plotPara()
+    corrCH = corrFunc(bondCH)
+    corrOH = corrFunc(bondOH)
+    corrCO = corrFunc(bondCO)
+
+    ticks = np.linspace(0, Nframe * 10E-4 / 2, int(Nframe / 2))
+
+    plt.plot(ticks, corrOH, label='O — H', c=color[1])
+    plt.plot(ticks, corrCO, label='C — O', c=color[0])
+    plt.plot(ticks, corrCH, label='C — other H', c=color[2])
+
+    plt.legend()
+    plt.xlabel(r'Time / ps')
+    plt.ylabel('Correlation Function')
+    plt.xlim(min(ticks), max(ticks))
+    plt.yticks([0])
+
+    plotSave('CorrFunc')
+    plt.show()
 
 def plotH3():
     # Bond Length
@@ -296,12 +329,13 @@ def main():
     coord, atomList = readCoord(path)
     centr = getCentroid(coord)
 
-    # plotOHCH4()
+    plotOHCH4()
     # plotH3()
-    plotMgH2()
+    # plotMgH2()
 
 main()
 
+# from RPMDrate program
 atomicMass = {
     "Mu": 0.113,
     "H": 1.00782503207,

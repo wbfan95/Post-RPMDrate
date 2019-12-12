@@ -55,6 +55,15 @@ def input_path():
     return path
 
 
+def clearFolder(path):
+    if os.path.exists(path):
+        for fileName in os.listdir(path):
+            os.remove(os.path.join(path, fileName))
+    else:
+        os.makedirs(path)
+
+
+
 def plot_parameters(title):
     print('[INFO] Plotting {}! '.format(title))
     plt.figure(figsize=(4, 3))
@@ -79,70 +88,41 @@ def plot_save(name):
     plt.close()
 
 
-def get_tail(fname):
-    fp = open(fname, 'r')
-    last_line = fp.readlines()
-    # print(last_line)
-    fp.close()
-    return last_line
-
-
-def get_xav(fname):
-    last_line = get_tail(fname)
-    line = last_line[-1]
-    line_element = line.split()
-    Nl = len(line_element)
-    xav = 0.0
-    xav2 = 0.0
-    if Nl < 3:
-        raise ValueError("The last line doesn't contain 'xav' and 'xav2'. ")
-    else:
-        if line_element[3] == "===============" or line_element[3] == "*":
-            print("[ERROR] This task didn't cycle 1 time. ")
-            print(fname)
-        else:
-            xav = np.float(line_element[3])
-            xav2 = np.float(line_element[4])
-    return xav, xav2
-
-
 def my_gaussian(x, xav, xav2):
     y = (1.0 / (np.sqrt(2.0 * np.pi * xav2))) * np.exp(-(x - xav) ** 2 / (2.0 * xav2))
     return y
 
 
-def plot_overlap(path, xiList):
+def plot_overlap():
     title = 'Overlap'
     plot_parameters(title)
 
     resolution = 2000
-    extend = 0.02  # 3E-2
+    extend = 0.03  # 3E-2
 
-    xiMin = np.min(xiList)
-    xiMax = np.max(xiList)
-    length = len(xiList)
+    xiMin = np.min(xi_list)
+    xiMax = np.max(xi_list)
+    length = len(xi_list)
 
     x_new = np.linspace(xiMin - extend, xiMax + extend, resolution)
     y_sum = np.zeros((resolution))  # Total density line
 
     maxPop = 0  # maximum of the summation of all population
     for i in range(length):
-        fname = path + "/umbrella_sampling_{0:.4f}.dat".format(xiList[i])
-        if os.path.isfile(fname):
-            # Gaussian smearing
-            xav, xav2 = get_xav(fname)
-            y_new = my_gaussian(x_new, xav, xav2)
+        # Gaussian smearing
+        xav, xav2 = umbInfo[3:, NtrajEff - 1, i]
+        y_new = my_gaussian(x_new, xav, xav2)
 
-            # Find biggest population
-            if max(y_new) > maxPop:
-                maxPop = max(y_new)
+        # Find biggest population
+        if max(y_new) > maxPop:
+            maxPop = max(y_new)
 
-            y_sum += y_new  # sum all population
-            if xav2 > 5.0E-5:
-                print("[WARNING] May be too various in xi = {}! ".format(xiList[i]))
-                plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.8)
-            else:
-                plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
+        y_sum += y_new  # sum all population
+        if xav2 > 5.0E-5:
+            print("[WARNING] May be too various in xi = {}! ".format(xi_list[i]))
+            plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.8)
+        else:
+            plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
 
     # Plot summation and difference
     plt.plot(x_new, y_sum, lw=1, c=color[0], label=mylabel)  # label='Summation of all populations')  # SHU Blue
@@ -161,30 +141,23 @@ def plot_overlap(path, xiList):
     plot_save(title)
 
 
-def plot_variance(path, xiList):
+def plot_variance():
     title = 'Variance'
     plot_parameters(title)
 
-    xiMin = np.min(xiList)
-    xiMax = np.max(xiList)
-    length = len(xiList)
+    xiMin = np.min(xi_list)
+    xiMax = np.max(xi_list)
+    length = len(xi_list)
 
     for i in range(length):
-        fname = path + "/umbrella_sampling_{0:.4f}.dat".format(xiList[i])
-        # print(fname)
-        f = open(fname, 'r')
-        fLines = f.readlines()
-        f.close()
+        xivar = umbInfo[4, :, i]
+        timeEvolution = umbInfo[2, :, i]
 
-        timeEvolution = []
-        xivar = []
-        for line in fLines[15:-1]:
-            lineSplit = line.split()
-            timeEvolution.append(np.float(lineSplit[2]))
-            xivar.append(np.float(lineSplit[-1]))
+        timeStep = delta
+        timeEvolution = [x * timeStep * 10E-4 for x in timeEvolution]  # 0.1 fs to 1 ns
 
-        timeStep = np.float(fLines[6].split()[3])
-        timeEvolution = [x * timeStep * 10E-4 for x in timeEvolution]
+        if xivar[-1] > 5E-5:
+            print('       traj. at xi = {} may be too various! '.format(xi_list[i]))
 
         # xivarDelta = []
         # for i in range(len(xivar)-1):
@@ -196,19 +169,19 @@ def plot_variance(path, xiList):
         # for i in range(len(xivar)):
         #     xivar[i] = xivar[i] - xivar[0]
 
-        plt.xlabel('$t$ / ns')
-        plt.ylabel('Variance')
-
-        # Scientific notation for y axis
-        # # plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
-        from matplotlib import ticker
-        formatter = ticker.ScalarFormatter(useMathText=True)
-        formatter.set_scientific(True)
-        formatter.set_powerlimits((-1, 1))
-        plt.gca().yaxis.set_major_formatter(formatter)
-
         # color = (np.random.rand(), np.random.rand(), np.random.rand())
         plt.plot(timeEvolution, xivar, lw=0.2, c=color[0], alpha=0.5)
+
+    plt.xlabel('$t$ / ns')
+    plt.ylabel('Variance')
+
+    # Scientific notation for y axis
+    # # plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+    from matplotlib import ticker
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().yaxis.set_major_formatter(formatter)
 
     plot_save(title)
 
@@ -236,7 +209,7 @@ def plot_pmf(path):
         xiZeroIndex = list(xiAbs).index(min(np.abs(xi)))
         pmf = [(x - pmf[xiZeroIndex]) / 27.211 * 627.503 for x in pmf]  # shift and convert to kcal/mol
 
-        plt.xlabel(r'tion Coordinate')
+        plt.xlabel(r'Reaction Coordinate')
         plt.ylabel(r'$W(\xi)$ (kcal/mol)')
 
         # Choose the fit range of this plot
@@ -323,19 +296,16 @@ def plot_overlap_density(path):
     resolution = 2000
     extend = 0.03  # 3E-2
 
-    xiList = sorted(xi_list)  # Sort them
+    xiMin = np.min(xi_list)
+    xiMax = np.max(xi_list)
 
-    xiMin = np.min(xiList)
-    xiMax = np.max(xiList)
-    sizeH = len(xiList)
-
-    sizeV = np.shape(umbInfo)[1]
+    sizeV = NtrajEff  # np.shape(umbInfo)[1]
     sizeH = np.shape(umbInfo)[2]
 
     x_new = np.linspace(xiMin - extend, xiMax + extend, resolution)
 
     # Read time unit
-    tempFile = open(path + "/umbrella_sampling_{0:.4f}.dat".format(xiList[0]), 'r')
+    tempFile = open(path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[0]), 'r')
     lines = tempFile.readlines()
     timeSep = np.float(lines[9].split()[4]) / 1000.0  # to ns
 
@@ -363,6 +333,60 @@ def plot_overlap_density(path):
     # plt.title('The Evolution of Normalized Population')
     plot_save(title)
 
+    clearFolder('UI')
+    for cycle in range(NtrajEff):
+        if (cycle + 1) % np.int(NtrajEff / 10) == 0 or cycle == 0 or cycle == NtrajEff - 1:
+            resolution = 2000
+            extend = 0.03  # 3E-2
+
+            xiMin = np.min(xi_list)
+            xiMax = np.max(xi_list)
+            length = len(xi_list)
+
+            x_new = np.linspace(xiMin - extend, xiMax + extend, resolution)
+            y_sum = np.zeros((resolution))  # Total density line
+
+            maxPop = 0  # maximum of the summation of all population
+
+            timeCurrent = umbInfo[2, cycle, 0] * delta * 1E-3
+            plot_parameters('UI at time {:.4f} ns'.format(timeCurrent))
+
+            for i in range(length):
+                # Gaussian smearing
+                xav, xav2 = umbInfo[3:, cycle, i]
+                y_new = my_gaussian(x_new, xav, xav2)
+
+                if xav2 - 1E-8 < 0:
+                    print(cycle, i, '<0', xav, xav2)
+
+                # Find biggest population
+                if max(y_new) > maxPop:
+                    maxPop = max(y_new)
+
+                y_sum += y_new  # sum all population
+                if xav2 > 5.0E-5:
+                    # print("[WARNING] May be too various in xi = {}! ".format(xi_list[i]))
+                    plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.8)
+                else:
+                    plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
+
+            # Plot summation and difference
+            plt.plot(x_new, y_sum, lw=1, c=color[0], label='{:.4f} ns'.format(timeCurrent))
+            # mylabel)  # label='Summation of all populations')  # SHU Blue
+
+            # plt.xlabel('Reaction Coordinate / Å')
+            plt.xlabel('Reaction Coordinate')
+            plt.ylabel('Population')
+
+            plt.xlim(xiMin - extend, xiMax + extend)
+            # plt.ylim(0, maxPop*1.1)
+            # plt.ylim(0, max(y_sum) * 1.1)
+
+            plt.yticks([])  # No ticks and labels in y axis
+
+            plt.legend(loc="best")
+            plot_save('UI/{:.4f}'.format(timeCurrent))
+
 
 def plotKForce():
     plot_parameters('force constant')
@@ -383,12 +407,14 @@ def plotKForce():
     plot_save('kforce')
 
 
-def plotPMFEvolution():
+def plot_PMF_evolution():
     print('[INFO] Computing PMF evolution...')
+    clearFolder('PMF')
+
     # Constants
     bins = 100
     beta = 4.35974417e-18 / (1.3806504e-23 * temp)
-    totalCycle = np.shape(umbInfo)[1]  # the number of trajectories
+    totalCycle = NtrajEff  #np.shape(umbInfo)[1]  # the number of trajectories
     Nwindows = np.shape(umbInfo)[2]  # the number of windows
 
     # middle variables for calculations
@@ -402,6 +428,7 @@ def plotPMFEvolution():
     freeEnergy = np.zeros((3, totalCycle))  # time, xi, free energy
 
     for cycle in range(totalCycle):
+        # for cycle in [-1]:
         print('       Computing PMF evolution {} of {}'.format(cycle + 1, totalCycle))
         N = umbInfo[2, cycle, :]
         for n, xi in enumerate(binList):
@@ -414,7 +441,10 @@ def plotPMFEvolution():
                 kforce = kforce_list[l] * temp  # fixed
                 p[l] = 1.0 / np.sqrt(2 * np.pi * xi_var) * np.exp(-0.5 * (xi - xi_mean) ** 2 / xi_var)
                 dA0[l] = (1.0 / beta) * (xi - xi_mean) / xi_var - kforce * (xi - xi_window)
+                # plt.plot(p, label=l)
             dA[n] = np.sum(N * p * dA0) / np.sum(N * p)
+            # plt.legend()
+            # plt.show()
 
         # Now integrate numerically to get the potential of mean force
         potentialOfMeanForce = np.zeros((2, bins - 1))
@@ -434,10 +464,21 @@ def plotPMFEvolution():
         PMFcurrent = [x - PMFcurrent[xiZeroIndex] for x in PMFcurrent]
         PMFdata[:, cycle] = PMFcurrent
 
+        timeCurrent = umbInfo[2, cycle, 0] * delta * 1E-3
+
+        # save 10 PMF figures
+        if (cycle + 1) % np.int(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
+            plot_parameters('PMF at time {:.4f} ns'.format(timeCurrent))
+            plt.plot(PMFcurrent, c=color[0], label='{:.4f} ns'.format(timeCurrent))
+            plt.xlabel(r'Reaction Coordinate')
+            plt.ylabel(r'$W(\xi)$ (kcal/mol)')
+            plt.legend()
+            plot_save(r'PMF\{:.4f}'.format(timeCurrent))
+
         # calculate free energy
         pmfMaxValue = np.max(PMFcurrent)
         pmfMaxIndex = PMFcurrent.index(pmfMaxValue)
-        freeEnergy[:, cycle] = umbInfo[2, cycle, 0] * delta * 1E-3, binList[pmfMaxIndex], pmfMaxValue
+        freeEnergy[:, cycle] = timeCurrent, binList[pmfMaxIndex], pmfMaxValue
 
     # # write PMF datas
     # f = open('PMF_data.txt', 'w')
@@ -465,7 +506,7 @@ def plotPMFEvolution():
 
     pmfMin = np.min(pmfvalue)
     pmfMax = np.max(pmfvalue)
-    level = np.arange(np.int(pmfMin) - 4, np.int(pmfMax) + 4, 4)
+    level = np.arange(np.int(pmfMin) - 2, np.int(pmfMax) + 2, 1)
 
     plt.tricontourf(traj, xibins, pmfvalue, levels=level, cmap='Blues')
     plt.colorbar()
@@ -509,14 +550,14 @@ def plotPMFEvolution():
     ax1.set_ylabel('Reaction Coordinate')  # , color=color[0])
     ax2.set_ylabel('Free Energy (kcal/mol)')  # , color=color[1])
 
-    ax1.legend(loc='center right')
+    ax1.legend(loc='best')
 
     plot_save('PMF_free_energy')
 
 
 def getBasicInfo(path):
     # get the name of submitting script
-    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs']  # submitting script
+    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt']  # submitting script
     subName = ''
     subPath = ''
     for i, name in enumerate(subList):
@@ -530,7 +571,7 @@ def getBasicInfo(path):
     cmdLine = ''
     f = open(subPath, 'r')
     for line in f:
-        if line[:18] == 'python rpmdrate.py':
+        if line[:6] == 'python':
             cmdLine = line.split()
     del cmdLine[:2]  # delete `python` and `...rpmdrate.py`
 
@@ -547,7 +588,7 @@ def getBasicInfo(path):
 
     # delete redirect output
     for i, cmd in enumerate(cmdLine):
-        if cmd == '>' or cmd == '>>':
+        if cmd == '>' or cmd == '>>' or cmd == '#>':
             del cmdLine[i: i + 2]
 
     # get input file, temperature and the number of beads
@@ -559,7 +600,7 @@ def getBasicInfo(path):
 
     print('       Temperature:      {} K'.format(temp))
     print('       Number of beads:  {}'.format(Nbeads))
-    print('       Input file:       {}'.format(inputFile))
+    print('       Input file:       {}\n'.format(inputFile))
 
     return inputFile
 
@@ -569,14 +610,18 @@ def getUmbrellaInfo(path):
     Nwindows = len(xi_list)
 
     # Count the total lines of xi and xvar
-    Ntraj = 5000  # a number enough large
+    NtrajList = np.zeros(Nwindows)
     for i in range(Nwindows):
-        with open(path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[-1]), 'r') as tempFile:
-            for i, l in enumerate(tempFile):
+        with open(path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[i]), 'r') as tempFile:
+            for j, l in enumerate(tempFile):
                 pass
-        temp = i + 1 - 15  # 15 info lines # +1 means the number of lines
-        if temp < Ntraj:
-            Ntraj = temp
+        NtrajList[i] = j + 1 - 15  # 15 info lines # +1 means the number of lines
+
+    global Ntraj, NtrajEff
+    Ntraj = np.int(np.max(NtrajList))
+    NtrajEff = np.int(np.min(NtrajList))  # Effective lines
+    print('       Maximum of trajectories: {}'.format(Ntraj))
+    print('       Minimum of trajectories: {}\n'.format(NtrajEff))
 
     global umbInfo
     umbInfo = np.zeros((5, Ntraj, Nwindows))  # `5` means five columns in the umbrella info files.
@@ -593,9 +638,12 @@ def getUmbrellaInfo(path):
         f = open(fname, 'r').readlines()
 
         for j in range(Ntraj):
-            line = f[15 + j].split()
-            assert len(line) == 5
-            umbInfo[:, j, i] = line
+            try:
+                line = f[15 + j].split()
+                assert len(line) == 5
+                umbInfo[:, j, i] = line
+            except IndexError:
+                umbInfo[:, j, i] = None
 
     return umbInfo
 
@@ -689,12 +737,12 @@ def main(folder=None):
 
     # plot
     plotKForce()
-    plot_overlap(path, xi_list)
-    plot_variance(path, xi_list)
+    plot_overlap()
+    plot_variance()
     plot_pmf(path)
     plot_rexFactor(path)
     plot_overlap_density(path)
-    plotPMFEvolution()
+    plot_PMF_evolution()
 
 
-main()
+main(r'D:\20191025 post-rpmd\H+H2 - Copy')
