@@ -182,7 +182,7 @@ def plot_variance():
         # color = (np.random.rand(), np.random.rand(), np.random.rand())
         plt.plot(timeEvolution, xivar, lw=0.2, c=color[0], alpha=0.5)
 
-    plt.xlabel('$t$ / ns')
+    plt.xlabel('$t$ (ns)')
     plt.ylabel('Variance')
 
     # Scientific notation for y axis
@@ -340,7 +340,7 @@ def plot_overlap_density(path):
     x = np.linspace(0, timeSep * sizeV, sizeV)
     plt.pcolormesh(x, y, z, cmap='Greens', vmax=1.0)  # pcolormesh # contourf # Greys_r
 
-    plt.xlabel('time / ns')
+    plt.xlabel('time (ns)')
     plt.ylabel('Reaction Coordinate')
 
     plt.colorbar()
@@ -544,7 +544,7 @@ def plot_PMF_evolution():
     plt.colorbar()
     plt.tricontour(traj, xibins, pmfvalue, linestyles='-', levels=level, colors='Black', linewidths=0.2)
 
-    plt.xlabel(r'Time / ns')
+    plt.xlabel(r'Time (ns)')
     plt.ylabel(r'Reaction Coordinate')
     plot_save('PMF_evolution')
 
@@ -575,8 +575,8 @@ def plot_PMF_evolution():
     ax1.set_xlim(0, np.max(freeEnergy[0, :]))
 
     ax1.plot(freeEnergy[0, :], freeEnergy[1, :], c=color[0])  # , label='Reaction Coordinate')
-    ax2.plot(freeEnergy[0, 0], freeEnergy[1, 0], c=color[1], label='Free Energy')
-    ax2.plot(freeEnergy[0, :], freeEnergy[2, :], c=color[0], label='Reaction Coordinate')  # fake figure for legend
+    ax2.plot(freeEnergy[0, :], freeEnergy[2, :], c=color[1], label='Free Energy')
+    ax2.plot(freeEnergy[0, 0], freeEnergy[2, 0], c=color[0], label='Reaction Coordinate')  # fake figure for legend
 
     ax1.set_xlabel('Time (ns)')
     ax1.set_ylabel('Reaction Coordinate')  # , color=color[0])
@@ -771,14 +771,14 @@ def main(folder=None):
     getInput(folder)
     getUmbrellaInfo(path)
 
-    # plot
-    plotKForce()
-    plot_overlap()
-    plot_variance()
-    plot_pmf(path)
-    plot_rexFactor(path)
-    plot_overlap_density(path)
+    # # plot
+    # plotKForce()
+    # plot_overlap()
+    # plot_variance()
+    # plot_pmf(path)
+    # plot_rexFactor(path)
+    # plot_overlap_density(path)
     plot_PMF_evolution()
 
 
-main(r'D:\ohch4\200CDK_25')
+main(r'D:\ohch4\400K')
