@@ -1,8 +1,8 @@
 '''
 Author: Wenbin FAN
 First Release: Oct. 30, 2019
-Modified: Dec. 4, 2019
-Verision: 1.3
+Modified: Dec. 12, 2019
+Verision: 1.4
 
 [Intro]
 Plot
@@ -12,8 +12,8 @@ Plot
 # (4) recrossing factor,
 # (5) the evolution of normalized population of xi,
 # (6) the force constant,
-# (7) the evolution of the potential of mean force (PMF)
-# (8) the evolution of free energy and corresponding reaction coordinates
+# (7) the evolution of the potential of mean force (PMF),
+# (8) the evolution of free energy and corresponding reaction coordinates,
 for a single task.
 
 [Usage]
@@ -27,9 +27,13 @@ Mail: fanwenbin@shu.edu.cn, langzihuigu@qq.com
 WeChat: 178-6567-1650
 
 Thanks for using this python program, with the respect to my supervisor Prof. Yongle!
-Great thanks to Yang Hui and Fang Junhua.
+Great thanks to Yang Hui.
 
 [Bug Fixing]
+V1.4:
+1) plot 10 UI and PMF figure in evolution,
+2) plot 3D version of UI and PMF
+3) optimize the reading procedure
 V1.3:
 1) read information from input file,
 2) add a plot for force constant.
@@ -39,7 +43,7 @@ V1.2:
 '''
 
 import os
-
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -61,7 +65,6 @@ def clearFolder(path):
             os.remove(os.path.join(path, fileName))
     else:
         os.makedirs(path)
-
 
 
 def plot_parameters(title):
@@ -111,18 +114,22 @@ def plot_overlap():
     for i in range(length):
         # Gaussian smearing
         xav, xav2 = umbInfo[3:, NtrajEff - 1, i]
-        y_new = my_gaussian(x_new, xav, xav2)
-
-        # Find biggest population
-        if max(y_new) > maxPop:
-            maxPop = max(y_new)
-
-        y_sum += y_new  # sum all population
-        if xav2 > 5.0E-5:
-            print("[WARNING] May be too various in xi = {}! ".format(xi_list[i]))
-            plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.8)
+        if xav2 < 1E-10:  # xav2 is zero!
+            plt.axvline(xi_list[i], ls='--', c='red', lw=0.2)
+            print('[ERROR] Variance at `xi = {}` is ZERO! '.format(xi_list[i]))
         else:
-            plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
+            y_new = my_gaussian(x_new, xav, xav2)
+
+            # Find biggest population
+            if max(y_new) > maxPop:
+                maxPop = max(y_new)
+
+            y_sum += y_new  # sum all population
+            if xav2 > 5.0E-5:
+                print("[WARNING] May be too various in xi = {}! ".format(xi_list[i]))
+                plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.8)
+            else:
+                plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
 
     # Plot summation and difference
     plt.plot(x_new, y_sum, lw=1, c=color[0], label=mylabel)  # label='Summation of all populations')  # SHU Blue
@@ -142,6 +149,9 @@ def plot_overlap():
 
 
 def plot_variance():
+    if NtrajEff == 1:
+        return
+
     title = 'Variance'
     plot_parameters(title)
 
@@ -290,6 +300,9 @@ def plot_rexFactor(path):
 
 
 def plot_overlap_density(path):
+    if NtrajEff == 1:
+        return
+
     title = 'Overlap_Density'
     plot_parameters(title)
 
@@ -320,6 +333,7 @@ def plot_overlap_density(path):
             y_sum += y_new
             z[j * resolution:(j + 1) * (resolution)] = y_sum
 
+
     # plt.show()
     z = z.reshape(sizeV, resolution).transpose()
     z /= np.max(z)
@@ -332,6 +346,19 @@ def plot_overlap_density(path):
     plt.colorbar()
     # plt.title('The Evolution of Normalized Population')
     plot_save(title)
+
+    # 3D UI
+    X, Y = np.meshgrid(x, y)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, z, cmap='Greens', linewidth=0.2, edgecolors='black')
+    ax.view_init(elev=20, azim=30)
+
+    ax.set_xlabel(r'Time (ns)')
+    ax.set_ylabel(r'Reaction Coordinate')
+    ax.set_zlabel(r'Energy (kcal/mol)')
+
+    plot_save('Overlap_Density_3D')
 
     clearFolder('UI')
     for cycle in range(NtrajEff):
@@ -380,12 +407,13 @@ def plot_overlap_density(path):
 
             plt.xlim(xiMin - extend, xiMax + extend)
             # plt.ylim(0, maxPop*1.1)
-            # plt.ylim(0, max(y_sum) * 1.1)
+            plt.ylim(0, max(y_sum) * 1.1)
 
             plt.yticks([])  # No ticks and labels in y axis
 
             plt.legend(loc="best")
             plot_save('UI/{:.4f}'.format(timeCurrent))
+
 
 
 def plotKForce():
@@ -408,11 +436,14 @@ def plotKForce():
 
 
 def plot_PMF_evolution():
+    if NtrajEff == 1:
+        return
+
     print('[INFO] Computing PMF evolution...')
     clearFolder('PMF')
 
     # Constants
-    bins = 100
+    bins = 500
     beta = 4.35974417e-18 / (1.3806504e-23 * temp)
     totalCycle = NtrajEff  #np.shape(umbInfo)[1]  # the number of trajectories
     Nwindows = np.shape(umbInfo)[2]  # the number of windows
@@ -469,7 +500,7 @@ def plot_PMF_evolution():
         # save 10 PMF figures
         if (cycle + 1) % np.int(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
             plot_parameters('PMF at time {:.4f} ns'.format(timeCurrent))
-            plt.plot(PMFcurrent, c=color[0], label='{:.4f} ns'.format(timeCurrent))
+            plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.4f} ns'.format(timeCurrent))
             plt.xlabel(r'Reaction Coordinate')
             plt.ylabel(r'$W(\xi)$ (kcal/mol)')
             plt.legend()
@@ -479,6 +510,7 @@ def plot_PMF_evolution():
         pmfMaxValue = np.max(PMFcurrent)
         pmfMaxIndex = PMFcurrent.index(pmfMaxValue)
         freeEnergy[:, cycle] = timeCurrent, binList[pmfMaxIndex], pmfMaxValue
+
 
     # # write PMF datas
     # f = open('PMF_data.txt', 'w')
@@ -542,15 +574,15 @@ def plot_PMF_evolution():
     fig.set_figwidth(4)
     ax1.set_xlim(0, np.max(freeEnergy[0, :]))
 
-    ax1.plot(freeEnergy[0, 0], freeEnergy[1, 0], c=color[1], label='Free Energy')  # fake figure for legend
-    ax1.plot(freeEnergy[0, :], freeEnergy[1, :], c=color[0], label='Reaction Coordinate')
-    ax2.plot(freeEnergy[0, :], freeEnergy[2, :], c=color[1])  # , label='Free Energy')
+    ax1.plot(freeEnergy[0, :], freeEnergy[1, :], c=color[0])  # , label='Reaction Coordinate')
+    ax2.plot(freeEnergy[0, 0], freeEnergy[1, 0], c=color[1], label='Free Energy')
+    ax2.plot(freeEnergy[0, :], freeEnergy[2, :], c=color[0], label='Reaction Coordinate')  # fake figure for legend
 
     ax1.set_xlabel('Time (ns)')
     ax1.set_ylabel('Reaction Coordinate')  # , color=color[0])
     ax2.set_ylabel('Free Energy (kcal/mol)')  # , color=color[1])
 
-    ax1.legend(loc='best')
+    ax2.legend(loc='best')
 
     plot_save('PMF_free_energy')
 
@@ -608,6 +640,7 @@ def getBasicInfo(path):
 def getUmbrellaInfo(path):
     print('[INFO] Getting umbrella data...')
     Nwindows = len(xi_list)
+    print('       number of windows: {}'.format(Nwindows))
 
     # Count the total lines of xi and xvar
     NtrajList = np.zeros(Nwindows)
@@ -673,8 +706,10 @@ def getInput(folder):
     path = os.path.join(folder, str(temp), str(Nbeads))
 
     global mylabel
-    mylabel = '{} K, {} beads'.format(temp, Nbeads)
-
+    if Nbeads == 1:
+        mylabel = '{} K, {} bead'.format(temp, Nbeads)
+    else:
+        mylabel = '{} K, {} beads'.format(temp, Nbeads)
 
 # Defination in RPMDrate:
 def reactants(atoms, reactant1Atoms, reactant2Atoms, Rinf):
@@ -700,6 +735,7 @@ def generateUmbrellaConfigurations(dt, evolutionTime, xi_list, kforce):
 
 def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
     global xi_list, kforce_list
+    # print(windows)
     xi_list = np.zeros(len(windows))
     kforce_list = np.zeros(len(windows))
     for i in range(len(windows)):
@@ -745,4 +781,4 @@ def main(folder=None):
     plot_PMF_evolution()
 
 
-main(r'D:\20191025 post-rpmd\H+H2 - Copy')
+main(r'D:\ohch4\200CDK_25')
