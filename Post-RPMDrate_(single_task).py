@@ -14,6 +14,7 @@ Plot
 # (6) the force constant,
 # (7) the evolution of the potential of mean force (PMF),
 # (8) the evolution of free energy and corresponding reaction coordinates,
+# (9) the evolution of xi,
 for a single task.
 
 [Usage]
@@ -30,8 +31,11 @@ Thanks for using this python program, with the respect to my supervisor Prof. Yo
 Great thanks to Yang Hui.
 
 [Bug Fixing]
+V1.5:
+1) enhance the stability
+2) add more figure
 V1.4:
-1) plot 10 UI and PMF figure in evolution,
+1) plot 10 UI and PMF figures in evolution,
 2) plot 3D version of UI and PMF
 3) optimize the reading procedure
 V1.3:
@@ -49,14 +53,21 @@ import numpy as np
 import pandas as pd
 
 color = ['#00447c', '#ae0d16', '#47872c', '#800964']
-
-
 # SHU Blue, Weichang Red, Willow Green, SHU Purple
 # This color scheme can be easily obtained on the official website `vi.shu.edu.cn`.
+Tcolor1 = [0., 68., 124.]
+Tcolor2 = [174., 13., 22.]
 
 def input_path():
     path = input('Please input the folder with `submitting script` and your input file: \n')
     return path
+
+
+def myEnding():
+    print('\n'
+          '[INFO] All jobs have been done normally! \n'
+          '       Any question please contact `fanwenbin[at]shu.edu.cn`\n')
+    return
 
 
 def clearFolder(path):
@@ -140,11 +151,11 @@ def plot_overlap():
 
     plt.xlim(xiMin - extend, xiMax + extend)
     # plt.ylim(0, maxPop*1.1)
-    plt.ylim(0, max(y_sum) * 1.1)
+    plt.ylim(0, max(y_sum) * 1.2)
 
     plt.yticks([])  # No ticks and labels in y axis
 
-    plt.legend(loc="best")
+    plt.legend(loc='upper left')
     plot_save(title)
 
 
@@ -159,6 +170,8 @@ def plot_variance():
     xiMax = np.max(xi_list)
     length = len(xi_list)
 
+    timeMax = 0.0
+    timeMin = 1E5
     for i in range(length):
         xivar = umbInfo[4, :, i]
         timeEvolution = umbInfo[2, :, i]
@@ -179,11 +192,25 @@ def plot_variance():
         # for i in range(len(xivar)):
         #     xivar[i] = xivar[i] - xivar[0]
 
-        # color = (np.random.rand(), np.random.rand(), np.random.rand())
-        plt.plot(timeEvolution, xivar, lw=0.2, c=color[0], alpha=0.5)
+        # define transition color # from SHU blue (xi = 0) to Weichang red (xi = 1)
+        tscolor = (((Tcolor2[0] - Tcolor1[0]) * i / length + 0) / 255.0,
+                   ((Tcolor2[1] - Tcolor1[1]) * i / length + 68) / 255.0,
+                   ((Tcolor2[2] - Tcolor1[2]) * i / length + 124) / 255.0)
 
-    plt.xlabel('$t$ (ns)')
+        # color = (np.random.rand(), np.random.rand(), np.random.rand())
+        plt.plot(timeEvolution, xivar, lw=0.4, c=tscolor, alpha=0.5)
+
+        if max(timeEvolution) > timeMax:
+            timeMax = max(timeEvolution)
+        if min(timeEvolution) < timeMin:
+            timeMin = min(timeEvolution)
+
+    plt.xlabel('Time (ns)')
     plt.ylabel('Variance')
+
+    # print(umbInfo[2, 0, 0] * delta * 1E-3, umbInfo[2, -1, 0] * delta * 1E-3)
+    plt.xlim(timeMin, timeMax)
+    # 2 is 3rd column, -1 is the time in last frame, 0 is random (other number is ojbk).
 
     # Scientific notation for y axis
     # # plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
@@ -253,7 +280,7 @@ def plot_pmf(path):
         #
         # plt.setp(subfig, xlim=[min(ximax), max(ximax)])
 
-        plt.legend(loc="best")
+        plt.legend(loc='upper left')
         plot_save(title)
 
 
@@ -284,7 +311,7 @@ def plot_rexFactor(path):
             time.append(np.float(ele[0]))
             kappa.append(np.float(ele[-1]))
 
-        plt.xlabel('$t$ / fs')
+        plt.xlabel('$t$ (fs)')
         plt.ylabel('$\kappa(t)$')
 
         # plt.xscale('log')
@@ -340,7 +367,7 @@ def plot_overlap_density(path):
     x = np.linspace(0, timeSep * sizeV, sizeV)
     plt.pcolormesh(x, y, z, cmap='Greens', vmax=1.0)  # pcolormesh # contourf # Greys_r
 
-    plt.xlabel('time (ns)')
+    plt.xlabel('Time (ns)')
     plt.ylabel('Reaction Coordinate')
 
     plt.colorbar()
@@ -348,21 +375,23 @@ def plot_overlap_density(path):
     plot_save(title)
 
     # 3D UI
+    plot_parameters('UI (3D)')
     X, Y = np.meshgrid(x, y)
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+    fig = plt.figure(figsize=(5, 3.75))  # 1.25 * (4,3)
+    ax = fig.gca(projection='3d')
     ax.plot_surface(X, Y, z, cmap='Greens', linewidth=0.2, edgecolors='black')
     ax.view_init(elev=20, azim=30)
 
+    # ax.set_zticks([])
     ax.set_xlabel(r'Time (ns)')
     ax.set_ylabel(r'Reaction Coordinate')
-    ax.set_zlabel(r'Energy (kcal/mol)')
+    ax.set_zlabel(r'Normalized Population')
 
     plot_save('Overlap_Density_3D')
 
     clearFolder('UI')
     for cycle in range(NtrajEff):
-        if (cycle + 1) % np.int(NtrajEff / 10) == 0 or cycle == 0 or cycle == NtrajEff - 1:
+        if (cycle + 1) % np.ceil(NtrajEff / 10) == 0 or cycle == 0 or cycle == NtrajEff - 1:
             resolution = 2000
             extend = 0.03  # 3E-2
 
@@ -407,11 +436,11 @@ def plot_overlap_density(path):
 
             plt.xlim(xiMin - extend, xiMax + extend)
             # plt.ylim(0, maxPop*1.1)
-            plt.ylim(0, max(y_sum) * 1.1)
+            plt.ylim(0, max(y_sum) * 1.2)
 
             plt.yticks([])  # No ticks and labels in y axis
 
-            plt.legend(loc="best")
+            plt.legend(loc='upper left')
             plot_save('UI/{:.4f}'.format(timeCurrent))
 
 
@@ -431,7 +460,7 @@ def plotKForce():
     # plt.xlim(min(xi_list), max(xi_list))
     plt.ylim(0, max(kforce_list) * 1.1)
 
-    plt.legend(loc="best")
+    plt.legend(loc='lower right')
     plot_save('kforce')
 
 
@@ -490,20 +519,20 @@ def plot_PMF_evolution():
         PMFcurrent = potentialOfMeanForce[1, :] * 627.503  # to kcal/mol
 
         # Let W(xi=0) = 0!
-        xiAbs = np.abs(xi_list)
-        xiZeroIndex = list(xiAbs).index(min(np.abs(xi_list)))
+        xiAbs = np.abs(binList)
+        xiZeroIndex = list(xiAbs).index(min(np.abs(binList)))
         PMFcurrent = [x - PMFcurrent[xiZeroIndex] for x in PMFcurrent]
         PMFdata[:, cycle] = PMFcurrent
 
         timeCurrent = umbInfo[2, cycle, 0] * delta * 1E-3
 
         # save 10 PMF figures
-        if (cycle + 1) % np.int(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
+        if (cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
             plot_parameters('PMF at time {:.4f} ns'.format(timeCurrent))
             plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.4f} ns'.format(timeCurrent))
             plt.xlabel(r'Reaction Coordinate')
             plt.ylabel(r'$W(\xi)$ (kcal/mol)')
-            plt.legend()
+            plt.legend(loc='upper left')
             plot_save(r'PMF\{:.4f}'.format(timeCurrent))
 
         # calculate free energy
@@ -554,14 +583,14 @@ def plot_PMF_evolution():
     Y = np.reshape(xibins, (totalCycle, bins - 1))
     Z = np.reshape(pmfvalue, (totalCycle, bins - 1))
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+    fig = plt.figure(figsize=(5, 3.75))  # 1.25 * (4,3)
+    ax = fig.gca(projection='3d')
     ax.plot_surface(X, Y, Z, cmap='Blues', linewidth=0.2, edgecolors='black')
     ax.view_init(elev=20, azim=30)
 
     ax.set_xlabel(r'Time (ns)')
     ax.set_ylabel(r'Reaction Coordinate')
-    ax.set_zlabel(r'Energy (kcal/mol)')
+    ax.set_zlabel(r'Free Energy (kcal/mol)')
 
     plot_save('PMF_evolution_3D')
 
@@ -587,6 +616,37 @@ def plot_PMF_evolution():
     plot_save('PMF_free_energy')
 
 
+def plot_xi():
+    plot_parameters('xi evolution')
+
+    length = len(xi_list)
+
+    timeMax = 0.0
+    timeMin = 1E5
+    for i in range(length):
+        tscolor = (((Tcolor2[0] - Tcolor1[0]) * i / length + 0) / 255.0,
+                   ((Tcolor2[1] - Tcolor1[1]) * i / length + 68) / 255.0,
+                   ((Tcolor2[2] - Tcolor1[2]) * i / length + 124) / 255.0)
+
+        timeEvolution = umbInfo[2, :, i]
+        timeEvolution = [x * delta * 10E-3 for x in timeEvolution]  # 0.1 fs to 1 ns
+        plt.plot(timeEvolution, umbInfo[3, :, i], c=tscolor, lw=0.5)
+
+        if max(timeEvolution) > timeMax:
+            timeMax = max(timeEvolution)
+        if min(timeEvolution) < timeMin:
+            timeMin = min(timeEvolution)
+
+    plt.xlim(timeMin, timeMax)
+    plt.xlabel('Time (ns)')
+    plt.ylabel('Reaction Coordinates')
+
+    plot_save('xi_evolution')
+
+    return
+
+
+
 def getBasicInfo(path):
     # get the name of submitting script
     subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt']  # submitting script
@@ -597,11 +657,18 @@ def getBasicInfo(path):
             subName = name
             subPath = os.path.join(path, name)
             break
-    print('[INFO] Submitting arguments: ')
 
     # read temperature and the number of beads
+    try:
+        f = open(subPath, 'r')
+    except FileNotFoundError:
+        subName = input('[ERROR] `input.py` not found! \n'
+                        '        Please input your `input.py` file name: \n')
+        subPath = os.path.join(path, subName)
+        f = open(subPath, 'r')
+
+    print('[INFO] Submitting arguments: ')
     cmdLine = ''
-    f = open(subPath, 'r')
     for line in f:
         if line[:6] == 'python':
             cmdLine = line.split()
@@ -620,8 +687,8 @@ def getBasicInfo(path):
 
     # delete redirect output
     for i, cmd in enumerate(cmdLine):
-        if cmd == '>' or cmd == '>>' or cmd == '#>':
-            del cmdLine[i: i + 2]
+        if cmd == '>' or cmd == '>>' or cmd == '#>' or cmd == '|':
+            del cmdLine[i:]
 
     # get input file, temperature and the number of beads
     assert len(cmdLine) == 3, 'Your submitting script may be wrong! '
@@ -730,7 +797,13 @@ def thermostat(type, **kwargs):
 
 def generateUmbrellaConfigurations(dt, evolutionTime, xi_list, kforce):
     global delta
-    delta = dt[0]
+    if dt[1] == 'ps':
+        delta = dt[0]
+    elif dt[1] == 'fs':
+        delta = dt[0] * 1E-3
+    else:
+        print('[ERROR] Time unit {} not support and will be regarded as `ps`. '.format(dt[1]))
+        delta = dt[0]
     assert np.float(delta) < 1
 
 def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
@@ -771,14 +844,17 @@ def main(folder=None):
     getInput(folder)
     getUmbrellaInfo(path)
 
-    # # plot
-    # plotKForce()
-    # plot_overlap()
-    # plot_variance()
-    # plot_pmf(path)
-    # plot_rexFactor(path)
-    # plot_overlap_density(path)
+    # plot
+    plotKForce()
+    plot_xi()
+    plot_overlap()
+    plot_variance()
+    plot_pmf(path)
+    plot_rexFactor(path)
+    plot_overlap_density(path)
     plot_PMF_evolution()
 
+    myEnding()
 
-main(r'D:\ohch4\400K')
+
+main(r'C:\Users\60343\Desktop\300-32')
