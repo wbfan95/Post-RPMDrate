@@ -71,11 +71,11 @@ def myEnding():
 
 
 def clearFolder(path):
-    if os.path.exists(path):
-        for fileName in os.listdir(path):
-            os.remove(os.path.join(path, fileName))
+    if os.path.exists(os.path.join(figPath, path)):
+        for fileName in os.listdir(os.path.join(figPath, path)):
+            os.remove(os.path.join(figPath, path, fileName))
     else:
-        os.makedirs(path)
+        os.makedirs(os.path.join(figPath, path))
 
 
 def plot_parameters(title):
@@ -97,7 +97,7 @@ def plot_parameters(title):
 
 def plot_save(name):
     plt.tight_layout()
-    plt.savefig(name + '.png', format='png', dpi=600)  # .svg is recommended!
+    plt.savefig(os.path.join(figPath, name + '.png'), format='png', dpi=600)  # .svg is recommended!
     plt.clf()
     plt.close()
 
@@ -441,7 +441,7 @@ def plot_overlap_density(path):
             plt.yticks([])  # No ticks and labels in y axis
 
             plt.legend(loc='upper left')
-            plot_save('UI/{:.4f}'.format(timeCurrent))
+            plot_save('UI\\{:.4f}'.format(timeCurrent))
 
 
 
@@ -533,7 +533,7 @@ def plot_PMF_evolution():
             plt.xlabel(r'Reaction Coordinate')
             plt.ylabel(r'$W(\xi)$ (kcal/mol)')
             plt.legend(loc='upper left')
-            plot_save(r'PMF\{:.4f}'.format(timeCurrent))
+            plot_save('PMF\\{:.4f}'.format(timeCurrent))
 
         # calculate free energy
         pmfMaxValue = np.max(PMFcurrent)
@@ -548,7 +548,7 @@ def plot_PMF_evolution():
     #     f.write('\t'.join(map(str, PMFdata[i,:])) + '\n')
 
     # write PMF datas
-    f = open('PMF_data.txt', 'w')
+    f = open(os.path.join(figPath, 'PMF_data.txt'), 'w')
     for j in range(totalCycle):
         for i in range(bins - 1):
             f.write(
@@ -559,7 +559,7 @@ def plot_PMF_evolution():
     # Plot PMF evolution
     plot_parameters('PMF evolution')
 
-    a = pd.read_csv('PMF_data.txt', sep='\t', header=None)
+    a = pd.read_csv(os.path.join(figPath, 'PMF_data.txt'), sep='\t', header=None)
 
     traj = list(a.iloc[:, 0])
     xibins = list(a.iloc[:, 1])
@@ -629,8 +629,17 @@ def plot_xi():
                    ((Tcolor2[2] - Tcolor1[2]) * i / length + 124) / 255.0)
 
         timeEvolution = umbInfo[2, :, i]
-        timeEvolution = [x * delta * 10E-3 for x in timeEvolution]  # 0.1 fs to 1 ns
-        plt.plot(timeEvolution, umbInfo[3, :, i], c=tscolor, lw=0.5)
+        timeEvolution = [x * delta * 10E-4 for x in timeEvolution]  # 0.1 fs to 1 ns
+        xiEvolution = umbInfo[3, :, i]
+
+        # light color for normal xi
+        alpha = 0.0
+        if max(xiEvolution) - min(xiEvolution) > (xi_list[1] - xi_list[0]) / 5.0:
+            alpha = 1.0
+        else:
+            alpha = 0.3
+
+        plt.plot(timeEvolution, umbInfo[3, :, i], c=tscolor, lw=0.5, alpha=alpha)
 
         if max(timeEvolution) > timeMax:
             timeMax = max(timeEvolution)
@@ -649,7 +658,7 @@ def plot_xi():
 
 def getBasicInfo(path):
     # get the name of submitting script
-    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt']  # submitting script
+    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf']  # submitting script
     subName = ''
     subPath = ''
     for i, name in enumerate(subList):
@@ -835,13 +844,17 @@ def Window(xi, kforce, trajectories, equilibrationTime, evolutionTime):
     return [np.float(xi), np.float(kforce)]
 
 
-def main(folder=None):
-    if folder == None:
-        folder = input_path()
+def main(inputFolder=None):
+    if inputFolder == None:
+        inputFolder = input_path()
+    global figPath
+    figPath = os.path.join(inputFolder, 'fig')
+    if not os.path.exists(figPath):
+        os.mkdir(figPath)
 
     # get info
-    getBasicInfo(folder)
-    getInput(folder)
+    getBasicInfo(inputFolder)
+    getInput(inputFolder)
     getUmbrellaInfo(path)
 
     # plot
@@ -857,4 +870,4 @@ def main(folder=None):
     myEnding()
 
 
-main(r'C:\Users\60343\Desktop\300-32')
+main(r'C:\Users\60343\Desktop\600-16')
