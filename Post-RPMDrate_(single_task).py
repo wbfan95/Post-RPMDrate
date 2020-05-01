@@ -1,8 +1,8 @@
 '''
 Author: Wenbin FAN
 First Release: Oct. 30, 2019
-Modified: Dec. 12, 2019
-Verision: 1.4
+Modified: 2020-05-01 15:26:17 Wenbin, FAN @ SHU
+Verision: 1.6
 
 [Intro]
 Plot
@@ -31,6 +31,11 @@ Thanks for using this python program, with the respect to my supervisor Prof. Yo
 Great thanks to Yang Hui.
 
 [Bug Fixing]
+V1.6:
+1) compute variance in each traj, pump the large jump.
+2) show upper bound of force constants.
+3) modified the gradient color of variance.
+4) stretch the figure size of overlapping.
 V1.5:
 1) enhance the stability
 2) add more figure
@@ -110,6 +115,7 @@ def my_gaussian(x, xav, xav2):
 def plot_overlap():
     title = 'Overlap'
     plot_parameters(title)
+    plt.figure(figsize=(9, 3))
 
     resolution = 2000
     extend = 0.03  # 3E-2
@@ -182,6 +188,23 @@ def plot_variance():
         if xivar[-1] > 5E-5:
             print('       traj. at xi = {} may be too various! '.format(xi_list[i]))
 
+        # largeJumpJudge = np.var(xivar)*1E13
+        # if largeJumpJudge > 10:
+        #     print('{:.3f}\t{:.2f}'.format(xi_list[i], largeJumpJudge))
+
+        jumpCount = 0
+        for j in range(len(xivar)):
+            if j > 0:
+                varCurrent = (umbInfo[1, j, i] - umbInfo[1, j - 1, i]) / (umbInfo[2, j, i] - umbInfo[2, j - 1, i]) - \
+                             ((umbInfo[0, j, i] - umbInfo[0, j - 1, i]) / (
+                                         umbInfo[2, j, i] - umbInfo[2, j - 1, i])) ** 2
+                if varCurrent / umbInfo[4, j, i] - 1 > 1:
+                    if jumpCount == 0:
+                        print('[INFO] Large jump: xi, step/10000, Current var, var')
+                    print('{:.3f}\t{:>5d}\t{:.3e}\t{:.3e}'.format(xi_list[i], np.int(umbInfo[2, j, i] / 10000),
+                                                                  varCurrent, umbInfo[4, j, i]))
+                    jumpCount += 1
+
         # xivarDelta = []
         # for i in range(len(xivar)-1):
         #     xivarDelta.append(np.abs(xivar[i+1] - xivar[i]))
@@ -193,12 +216,20 @@ def plot_variance():
         #     xivar[i] = xivar[i] - xivar[0]
 
         # define transition color # from SHU blue (xi = 0) to Weichang red (xi = 1)
-        tscolor = (((Tcolor2[0] - Tcolor1[0]) * i / length + 0) / 255.0,
-                   ((Tcolor2[1] - Tcolor1[1]) * i / length + 68) / 255.0,
-                   ((Tcolor2[2] - Tcolor1[2]) * i / length + 124) / 255.0)
+        # tscolor = (np.int(((Tcolor2[0] - Tcolor1[0]) * i / length + 0)) / 255.0,
+        #            (np.int((Tcolor2[1] - Tcolor1[1]) * i / length + 68)) / 255.0,
+        #            (np.int((Tcolor2[2] - Tcolor1[2]) * i / length + 124)) / 255.0)
+        tscolor = (np.int((255. * i / length)) / 255.0,
+                   0.,
+                   (np.int(-255. * i / length + 255)) / 255.0)
+        # colorList = list(tscolor)
+        # colorPrint = []
+        # for j in range(3):
+        #     colorPrint.append(np.int(colorList[j] * 255))
+        # print('{:.3f}\t{:}'.format(xi_list[i], colorPrint))
 
         # color = (np.random.rand(), np.random.rand(), np.random.rand())
-        plt.plot(timeEvolution, xivar, lw=0.4, c=tscolor, alpha=0.5)
+        plt.plot(timeEvolution, xivar, lw=1, c=tscolor)  # , alpha=0.5)
 
         if max(timeEvolution) > timeMax:
             timeMax = max(timeEvolution)
@@ -406,6 +437,7 @@ def plot_overlap_density(path):
 
             timeCurrent = umbInfo[2, cycle, 0] * delta * 1E-3
             plot_parameters('UI at time {:.4f} ns'.format(timeCurrent))
+            plt.figure(figsize=(9, 3))
 
             for i in range(length):
                 # Gaussian smearing
@@ -454,13 +486,30 @@ def plotKForce():
     plt.setp(stemlines, 'linewidth', 0.5)
     plt.scatter(xi_list, kforce_list, c=color[0], s=1, label=mylabel)
 
-    plt.ylabel('Force Constant ($T$ K$^{-1}$ eV)')
+    # upper bound of force constants
+    kMax = np.zeros(len(xi_list))
+    for i in range(len(xi_list) - 1):
+        kMax[i] = 9 * 3.16681046247368 * 1E-6 / (xi_list[i + 1] - xi_list[i]) ** 2
+        # print(kMax[i])
+    kMax[-1] = kMax[-2]
+    plt.plot(xi_list, kMax, '--', lw=0.75, c=color[1], alpha=0.5)
+    # emphasis the large force constants
+    for i, kmax in enumerate(kMax):
+        if kforce_list[i] > kmax:
+            plt.scatter(xi_list[i], kforce_list[i], c='red', s=4, zorder=10)
+            # markerline, stemlines, baseline = \
+            #     plt.stem(xi_list[i], kforce_list[i], use_line_collection=True,
+            #              basefmt=' ', markerfmt=' ', linefmt='red')
+            # plt.setp(stemlines, 'linewidth', 0.5)
+
+    plt.ylabel('Force Constant (Hartree)')  # $T$ K$^{-1}$
     plt.xlabel('Reaction Coordinate')
 
     # plt.xlim(min(xi_list), max(xi_list))
     plt.ylim(0, max(kforce_list) * 1.1)
 
-    plt.legend(loc='lower right')
+    # plt.legend(loc='lower right')
+    plt.legend(loc='upper left')
     plot_save('kforce')
 
 
@@ -658,7 +707,7 @@ def plot_xi():
 
 def getBasicInfo(path):
     # get the name of submitting script
-    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf']  # submitting script
+    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf', 'sub.pbs']  # submitting script
     subName = ''
     subPath = ''
     for i, name in enumerate(subList):
@@ -823,8 +872,15 @@ def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
     for i in range(len(windows)):
         xi_list[i] = '{0:.4f}'.format(windows[i][0])
         kforce_list[i] = windows[i][1] / temp
-    return xi_list, kforce_list
 
+    kf_path = os.path.join(os.path.abspath(os.path.dirname(figPath)), 'kforce.txt')
+    if os.path.exists(kf_path):
+        kf_list_read = open(kf_path, 'r')
+        kflines = kf_list_read.readlines()
+        for i, line in enumerate(kflines):
+            kforce_list[i] = np.float(line.split()[1])
+            print('kforce: {}'.format(kforce_list[i]))
+    return xi_list, kforce_list
 
 def computePotentialOfMeanForce(windows=None, xi_min=None, xi_max=None, bins=5000):
     pass
@@ -864,10 +920,15 @@ def main(inputFolder=None):
     plot_variance()
     plot_pmf(path)
     plot_rexFactor(path)
-    plot_overlap_density(path)
+    # plot_overlap_density(path)
     plot_PMF_evolution()
 
     myEnding()
 
 
-main(r'C:\Users\60343\Desktop\600-16')
+main(r'C:\Users\60343\Desktop\OHCH4\200-32')
+
+# root = r'C:\Users\60343\Desktop\OHCH4'
+# for dir in os.listdir(root):
+#     print(dir)
+#     main(os.path.join(root, dir))
