@@ -15,6 +15,7 @@ Plot
 # (7) the evolution of the potential of mean force (PMF),
 # (8) the evolution of free energy and corresponding reaction coordinates,
 # (9) the evolution of xi,
+# (10) the deviation of xi,
 for a single task.
 
 [Usage]
@@ -109,6 +110,12 @@ def plot_save(name):
     plt.close()
 
 
+def myFormatter():
+    sciFormatter = ticker.ScalarFormatter(useMathText=True)
+    sciFormatter.set_scientific(True)
+    sciFormatter.set_powerlimits((-1, 1))
+    return sciFormatter
+
 def my_gaussian(x, xav, xav2):
     y = (1.0 / (np.sqrt(2.0 * np.pi * xav2))) * np.exp(-(x - xav) ** 2 / (2.0 * xav2))
     return y
@@ -187,7 +194,7 @@ def plot_variance():
         timeEvolution = umbInfo[2, :, i]
 
         timeStep = delta
-        timeEvolution = [x * timeStep * 10E-4 for x in timeEvolution]  # 0.1 fs to 1 ns
+        timeEvolution = [x * timeStep for x in timeEvolution]  # 0.1 fs to 1 ns
 
         if xivar[-1] > 5E-5:
             print('       traj. at xi = {} may be too various! '.format(xi_list[i]))
@@ -239,7 +246,7 @@ def plot_variance():
         if min(timeEvolution) < timeMin:
             timeMin = min(timeEvolution)
 
-    plt.xlabel('Time (ns)')
+    plt.xlabel('Time (ps)')
     plt.ylabel('Variance')
 
     # print(umbInfo[2, 0, 0] * delta * 1E-3, umbInfo[2, -1, 0] * delta * 1E-3)
@@ -291,6 +298,12 @@ def plot_var_evolution():
 
         stepCount = umbInfo[2, :, i]
         timeCount = np.multiply(stepCount, delta)
+        timeCount_eff = 0
+        for k, kkk in enumerate(timeCount[1:]):
+            if timeCount[k + 1] > timeCount[k]:
+                timeCount_eff += 1
+            else:
+                break
 
         xiSep = np.zeros(Ntraj)
         varSep = np.zeros(Ntraj)
@@ -309,18 +322,18 @@ def plot_var_evolution():
         xiSep = np.add(xiSep, -xi_list[i])
         xiSep_mean = np.mean(xiSep)
         varSep_mean = np.mean(varSep)
-        xiSep_max, xiSep_min = np.max(xiSep), np.min(xiSep)
-        varSep_max, varSep_min = np.max(varSep), np.min(varSep)
+        xiSep_max, xiSep_min = np.max(xiSep[:timeCount_eff]), np.min(xiSep[:timeCount_eff])
+        varSep_max, varSep_min = np.max(varSep[:timeCount_eff]), np.min(varSep[:timeCount_eff])
         xiSep_range = xiSep_max - xiSep_min
         varSep_range = varSep_max - varSep_min
 
         # mean evolution
         me.plot(timeCount, xiMean, c=color[0])
-        me.yaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        me.yaxis.set_major_formatter(myFormatter())
         me_var = me.twinx()
         me_var.plot(timeCount, varMean, c=color[1])
         me_var.yaxis.set_major_formatter(formatter)
-        me.yaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+        me.yaxis.set_major_formatter(myFormatter())
         # me.axhline(y=xiSep_mean, c='blue', ls='--', zorder=10)
         # me_var.axhline(y=varSep_mean, c='red', ls='--', zorder=10)
         me.axhline(y=0.0, c='black', ls='--', lw=1)  # xi_ref
@@ -337,8 +350,8 @@ def plot_var_evolution():
 
         # mean scatter
         ms.plot(xiMean, varMean, c=color[0], marker='o', ls='', markersize=1)
-        ms.yaxis.set_major_formatter(formatter)
-        ms.xaxis.set_major_formatter(formatter)
+        ms.yaxis.set_major_formatter(myFormatter())
+        ms.xaxis.set_major_formatter(myFormatter())
         ms.axvline(x=0.0, c='black', ls='--', lw=1)  # xi_ref
         ms.set_ylabel('Variance')
         ms.set_xlabel('$\\xi - \\xi_{{\mathrm{{ref}}}}$')
@@ -348,9 +361,10 @@ def plot_var_evolution():
 
         # individual evolution
         ee.plot(timeCount, xiSep, c=color[0], lw=0.5)
+        ee.yaxis.set_major_formatter(myFormatter())
         ee_var = ee.twinx()
         ee_var.plot(timeCount, varSep, c=color[1], lw=0.5)
-        ee_var.yaxis.set_major_formatter(formatter)
+        ee_var.yaxis.set_major_formatter(myFormatter())
         # ee.axhline(y=xiSep_mean, c='blue', ls='--', zorder=10)
         # ee_var.axhline(y=varSep_mean, c='red', ls='--', zorder=10)
         ee.axhline(y=0.0, c='black', ls='--', lw=1)  # xi_ref
@@ -365,7 +379,8 @@ def plot_var_evolution():
 
         # individual scatter
         es.plot(xiSep, varSep, c=color[0], marker='o', ls='', markersize=1)
-        es.yaxis.set_major_formatter(formatter)
+        es.xaxis.set_major_formatter(myFormatter())
+        es.yaxis.set_major_formatter(myFormatter())
         # es.axhline(y=varSep_mean, c='red', ls='--', zorder=10)
         # es.axvline(x=xiSep_mean, c='blue', ls='--', zorder=10)
         es.axvline(x=0.0, c='black', ls='--', lw=1)  # xi_ref
@@ -376,8 +391,50 @@ def plot_var_evolution():
         es.set_xlim(xiSep_min - xiSep_range * 0.1, xiSep_max + xiSep_range * 0.1)
 
         # plt.show()
+        fig.suptitle(' Variance in window $\\xi_{{\mathrm{{ref}}}}={:.3f}$'.format(xi_list[i]),
+                     x=0., y=0.95, horizontalalignment='left', verticalalignment='bottom')
+        # fig.suptitle(mylabel,
+        #              x=1, y=0.95, horizontalalignment='right', verticalalignment='bottom')
         plot_save('Variances\\{:0>3d}_{:.3f}'.format(i, xi_list[i]))
 
+    return
+
+
+def plot_deviation():
+    title = 'deviation'
+    plot_parameters(title)
+
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    formatter2 = ticker.ScalarFormatter(useMathText=True)
+    formatter2.set_scientific(True)
+    formatter2.set_powerlimits((-1, 1))
+
+    # NtrajEff
+    xi_dev = np.zeros(len(xi_list))
+    var = np.zeros(len(xi_list))
+
+    for i in range(len(xi_list)):
+        xi_dev[i] = umbInfo[3, NtrajEff - 1, i] - xi_list[i]
+        tmp = umbInfo[1, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i] - \
+              (umbInfo[0, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i]) ** 2
+        var[i] = tmp * kforce_list[i] * temp * 627.509474063056  # to kcal/mol
+
+    plt.plot(xi_list, xi_dev, c=color[0])
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.xlabel('$\\xi$')
+    plt.ylabel('$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
+
+    plot_var = plt.twinx()
+    plot_var.plot(xi_list[0], var[0], c=color[0], label='$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
+    plot_var.plot(xi_list, var, c=color[1], label='$\\sigma_i k_i$')
+    plot_var.yaxis.set_major_formatter(formatter2)
+    plot_var.set_ylabel('$\\sigma_i k_i $ (kcal/mol)')
+    # plot_var.set_minorticks_on()
+
+    plot_var.legend(loc='best')
+    plot_save('xi_dev')
 
 def plot_pmf(path):
     title = 'PMF'
@@ -400,7 +457,13 @@ def plot_pmf(path):
         # Let W(xi=0) = 0!
         xiAbs = np.abs(xi)
         xiZeroIndex = list(xiAbs).index(min(np.abs(xi)))
-        pmf = [(x - pmf[xiZeroIndex]) / 27.211 * 627.503 for x in pmf]  # shift and convert to kcal/mol
+        pmf = [(x - pmf[xiZeroIndex]) / 27.211386245988 * 627.509474063056 for x in
+               pmf]  # shift and convert to kcal/mol
+
+        # write PMF in kcal/mol
+        with open(os.path.join(figPath, 'PMF.txt'), 'w') as pmfFile:
+            for i in range(len(xi)):
+                pmfFile.write('{:.6f}\t{:.10f}\n'.format(xi[i], pmf[i]))
 
         plt.xlabel(r'Reaction Coordinate')
         plt.ylabel(r'$W(\xi)$ (kcal/mol)')
@@ -480,6 +543,10 @@ def plot_rexFactor(path):
 
         plt.legend(loc="best")
         plot_save(title)
+
+        with open(os.path.join(figPath, 'recrossing.txt'), 'w') as rexFile:
+            for i in range(len(time)):
+                rexFile.write('{:.3f}\t{:.6f}\n'.format(time[i], kappa[i]))
 
 
 def plot_overlap_density(path):
@@ -703,12 +770,12 @@ def plot_PMF_evolution():
 
         # save 10 PMF figures
         if (cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
-            plot_parameters('PMF at time {:.4f} ps'.format(timeCurrent))
-            plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.4f} ps'.format(timeCurrent))
+            plot_parameters('PMF at time {:.0f} ps'.format(timeCurrent))
+            plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.0f} ps'.format(timeCurrent))
             plt.xlabel(r'Reaction Coordinate')
             plt.ylabel(r'$W(\xi)$ (kcal/mol)')
             plt.legend(loc='upper left')
-            plot_save('PMF\\{:.4f}'.format(timeCurrent))
+            plot_save('PMF\\{:.0f}'.format(timeCurrent))
 
         # calculate free energy
         pmfMaxValue = np.max(PMFcurrent)
@@ -796,6 +863,7 @@ def plot_xi():
     plot_parameters('xi evolution')
 
     length = len(xi_list)
+    xiref_evolution = np.zeros((Ntraj, length))
 
     timeMax = 0.0
     timeMin = 1E5
@@ -808,6 +876,7 @@ def plot_xi():
         timeEvolution = [x * delta for x in
                          timeEvolution]  # 0.1 fs to 1 ns #  * 1E-3 # ps # 2020-05-02 15:46:21 Wenbin, FAN @ SHU
         xiEvolution = umbInfo[3, :, i]
+        xiref_evolution[:, i] = np.add(np.divide(umbInfo[0, :, i], umbInfo[2, :, i]), -xi_list[i])
 
         # light color for normal xi
         alpha = 0.0
@@ -823,14 +892,29 @@ def plot_xi():
         if min(timeEvolution) < timeMin:
             timeMin = min(timeEvolution)
 
-    plt.xlim(timeMin, timeMax)
+    plt.xlim(0, timeMax)  # timeMin, timeMax
     plt.xlabel('Time (ps)')
     plt.ylabel('Reaction Coordinates')
 
     plot_save('xi_evolution')
 
-    return
+    plot_parameters('xi-ref_evolution')
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    for i in range(length):
+        tscolor = (np.int((255. * i / length)) / 255.0,
+                   0.,
+                   (np.int(-255. * i / length + 255)) / 255.0)
+        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor)
 
+    plt.xlim(0, timeMax)
+    plt.xlabel('Time (ps)')
+    plt.ylabel('$\\xi_i - \\xi_i^{\\mathrm{ref}}$')
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plot_save('xi-ref_evolution')
+
+    return
 
 
 def getBasicInfo(path):
@@ -964,6 +1048,43 @@ def getInput(folder):
     else:
         mylabel = '{} K, {} beads'.format(temp, Nbeads)
 
+
+def getRate(path):
+    print('[INFO] rate coefficients: ')
+    fileList = os.listdir(path)
+    rateFile = ''
+    for file in fileList:
+        if file.split('_')[0] == 'rate':
+            rateFile = os.path.join(path, file)
+            break
+
+    if len(rateFile) == 0:
+        print('[INFO] No rate file. ')
+        return
+
+    f = open(rateFile, 'r')
+    fl = f.readlines()
+
+    rateTemp = np.float(fl[4].split()[-2])
+    rateProb = np.float(fl[10].split()[-1])
+    rateMaxxi = np.float(fl[12].split()[-1])
+    rateQTST = np.float(fl[14].split()[-2])
+    rateRex = np.float(fl[17].split()[-1])
+    rateRPMD = np.float(fl[19].split()[-2])
+
+    rateFreeEnergy = - np.log(rateProb) * rateTemp * 1.3806504E-23 / 4.35974417E-18  # Hartree
+    rateRPMDfT = rateRPMD * 2 / (2 + 2 * np.exp(- 205 / rateTemp))
+
+    print('Temperature (K):   \t{:d}'.format(np.int(rateTemp)))
+    print('xi^ddagger:        \t{:.3f}'.format(rateMaxxi))
+    print('delta G (kcal/mol):\t{:.2f}'.format(rateFreeEnergy * 627.509474063056))
+    print('k_QTST:            \t{:.2e}'.format(rateQTST))
+    print('kappa:             \t{:.3f}'.format(rateRex))
+    print('k_RPMD:            \t{:.2e}'.format(rateRPMD))
+    print('k_RPMD * f(T):     \t{:.2e}'.format(rateRPMDfT))
+
+    return
+
 # Defination in RPMDrate:
 def reactants(atoms, reactant1Atoms, reactant2Atoms, Rinf):
     pass
@@ -1040,24 +1161,26 @@ def main(inputFolder=None):
     getBasicInfo(inputFolder)
     getInput(inputFolder)
     getUmbrellaInfo(path)
+    getRate(path)
 
     # # plot
-    # plotKForce()
-    # plot_xi()
-    # plot_overlap()
-    # plot_variance()
-    plot_var_evolution()
-    # plot_pmf(path)
-    # plot_rexFactor(path)
+    plotKForce()
+    plot_overlap()
+    plot_variance()
+    plot_pmf(path)
+    plot_rexFactor(path)
+    plot_xi()
+    plot_deviation()
     # plot_PMF_evolution()
+    plot_var_evolution()
     # plot_overlap_density(path)
 
     myEnding()
 
 
-main(r'D:\20191025 post-rpmd\HOCO\300K')
+main(r'C:\Users\60343\Desktop\OHCH4_2\500-16')
 
-# root = r'C:\Users\60343\Desktop\OHCH4'
+# root = r'C:\Users\60343\Desktop\OHCH4_2'
 # for dir in os.listdir(root):
 #     print(dir)
 #     main(os.path.join(root, dir))
