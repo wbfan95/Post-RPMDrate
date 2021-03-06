@@ -203,20 +203,23 @@ def plot_overlap():
     plt.ylabel('Population')
     plt.xlim(xiMin - extend, xiMax + extend)
     # plt.ylim(0, maxPop*1.1)
-    plt.ylim(0, max(y_sum) * 1.2)
+    plt.ylim(0.1, max(y_sum) * 1.2)
     plt.yticks([])  # No ticks and labels in y axis
     plt.legend(loc='upper left')
 
     # overlap ratio
-    overlapList = (xi_list[:-1] + xi_list[1:]) / 2
-    overlapRatio = np.zeros(length - 1)
     xbar = umbInfo[3, NtrajEff - 1, :]
     xvar = umbInfo[4, NtrajEff - 1, :]
+    # overlapList = (xi_list[:-1] + xi_list[1:]) / 2
+    overlapList = (xbar[:-1] + xbar[1:]) / 2
+    overlapRatio = np.zeros(length - 1)
     for i in range(length - 1):
         overlapRatio[i] = overlapArea(xbar[i], xvar[i], xbar[i + 1], xvar[i + 1])
+        # continue
 
     plotRatio = plt.twinx()
     plotRatio.plot(overlapList, overlapRatio, 'o-', c=color[1], markersize=4, lw=1.5)
+    plotRatio.axis(ymin=0, ymax=1)
 
     plot_save(title)
 
@@ -467,6 +470,8 @@ def plot_deviation():
         tmp = umbInfo[1, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i] - \
               (umbInfo[0, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i]) ** 2
         var[i] = tmp * kforce_list[i] * 627.509474063056  # to kcal/mol
+        if var[i] > 5E-3:
+            print("[INFO] The variance in xi={:.4f} is too large! ".format(xi_list[i]))
         # * temp *, no temperature here.
 
     plt.plot(xi_list, xi_dev, c=color[0])
@@ -759,7 +764,7 @@ def plot_PMF_evolution():
         return
 
     print('[INFO] Computing PMF evolution...')
-    clearFolder('PMF')
+    # clearFolder('PMF')
 
     # Constants
     bins = 500
@@ -777,9 +782,11 @@ def plot_PMF_evolution():
     PMFdata = np.zeros((bins - 1, totalCycle))
     freeEnergy = np.zeros((3, totalCycle))  # time, xi, free energy
 
+    g = open(os.path.join(figPath, 'freeEnergy_data.txt'), 'w')
+
     for cycle in range(totalCycle):
         # save 10 PMF figures
-        if (cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
+        if True: #(cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
             # for cycle in [-1]:
             print('       Computing PMF evolution {} of {}'.format(cycle + 1, totalCycle))
             N = umbInfo[2, cycle, :]
@@ -818,19 +825,20 @@ def plot_PMF_evolution():
 
             timeCurrent = umbInfo[2, cycle, 0] * delta  # * 1E-3
 
-
-            plot_parameters('PMF at time {:.0f} ps'.format(timeCurrent))
-            plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.0f} ps'.format(timeCurrent))
-            plt.xlabel(r'Reaction Coordinate')
-            plt.ylabel(r'$W(\xi)$ (kcal/mol)')
-            plt.legend(loc='upper left')
-            plot_save('PMF\\{:.0f}'.format(timeCurrent))
+            # plot_parameters('PMF at time {:.0f} ps'.format(timeCurrent))
+            # plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.0f} ps'.format(timeCurrent))
+            # plt.xlabel(r'Reaction Coordinate')
+            # plt.ylabel(r'$W(\xi)$ (kcal/mol)')
+            # plt.legend(loc='upper left')
+            # plot_save('PMF\\{:.0f}'.format(timeCurrent))
 
         # calculate free energy
         pmfMaxValue = np.max(PMFcurrent)
         pmfMaxIndex = PMFcurrent.index(pmfMaxValue)
         freeEnergy[:, cycle] = timeCurrent, binList[pmfMaxIndex], pmfMaxValue
 
+        g.write('{:5d}\t{:.6f}\t{:.6f}\t{:.18f}\n'.format(cycle, freeEnergy[0, cycle], freeEnergy[1, cycle], freeEnergy[2, cycle]))
+        g.flush()
 
     # # write PMF datas
     # f = open('PMF_data.txt', 'w')
@@ -848,43 +856,45 @@ def plot_PMF_evolution():
                                                       i, j]))  # time to ns # ps # 2020-05-02 15:44:43 Wenbin, FAN @ SHU
     f.close()
 
-    # Plot PMF evolution
-    plot_parameters('PMF evolution')
+    g.close()
 
-    a = pd.read_csv(os.path.join(figPath, 'PMF_data.txt'), sep='\t', header=None)
-
-    traj = list(a.iloc[:, 0])
-    xibins = list(a.iloc[:, 1])
-    pmfvalue = list(a.iloc[:, 2])
-
-    pmfMin = np.min(pmfvalue)
-    pmfMax = np.max(pmfvalue)
-    level = np.arange(np.int(pmfMin) - 2, np.int(pmfMax) + 2, 1)
-
-    plt.tricontourf(traj, xibins, pmfvalue, levels=level, cmap='Blues')
-    plt.colorbar()
-    plt.tricontour(traj, xibins, pmfvalue, linestyles='-', levels=level, colors='Black', linewidths=0.2)
-
-    plt.xlabel(r'Time (ps)')
-    plt.ylabel(r'Reaction Coordinate')
-    plot_save('PMF_evolution')
-
-    # 3D plot
-    # print(len(traj), (totalCycle, bins - 1))
-    X = np.reshape(traj, (totalCycle, bins - 1))
-    Y = np.reshape(xibins, (totalCycle, bins - 1))
-    Z = np.reshape(pmfvalue, (totalCycle, bins - 1))
-
-    fig = plt.figure(figsize=(5, 3.75))  # 1.25 * (4,3)
-    ax = fig.gca(projection='3d')
-    ax.plot_surface(X, Y, Z, cmap='Blues', linewidth=0.2, edgecolors='black')
-    ax.view_init(elev=20, azim=30)
-
-    ax.set_xlabel(r'Time (ps)')
-    ax.set_ylabel(r'Reaction Coordinate')
-    ax.set_zlabel(r'Free Energy (kcal/mol)')
-
-    plot_save('PMF_evolution_3D')
+    # # Plot PMF evolution
+    # plot_parameters('PMF evolution')
+    #
+    # a = pd.read_csv(os.path.join(figPath, 'PMF_data.txt'), sep='\t', header=None)
+    #
+    # traj = list(a.iloc[:, 0])
+    # xibins = list(a.iloc[:, 1])
+    # pmfvalue = list(a.iloc[:, 2])
+    #
+    # pmfMin = np.min(pmfvalue)
+    # pmfMax = np.max(pmfvalue)
+    # level = np.arange(np.int(pmfMin) - 2, np.int(pmfMax) + 2, 1)
+    #
+    # plt.tricontourf(traj, xibins, pmfvalue, levels=level, cmap='Blues')
+    # plt.colorbar()
+    # plt.tricontour(traj, xibins, pmfvalue, linestyles='-', levels=level, colors='Black', linewidths=0.2)
+    #
+    # plt.xlabel(r'Time (ps)')
+    # plt.ylabel(r'Reaction Coordinate')
+    # plot_save('PMF_evolution')
+    #
+    # # 3D plot
+    # # print(len(traj), (totalCycle, bins - 1))
+    # X = np.reshape(traj, (totalCycle, bins - 1))
+    # Y = np.reshape(xibins, (totalCycle, bins - 1))
+    # Z = np.reshape(pmfvalue, (totalCycle, bins - 1))
+    #
+    # fig = plt.figure(figsize=(5, 3.75))  # 1.25 * (4,3)
+    # ax = fig.gca(projection='3d')
+    # ax.plot_surface(X, Y, Z, cmap='Blues', linewidth=0.2, edgecolors='black')
+    # ax.view_init(elev=20, azim=30)
+    #
+    # ax.set_xlabel(r'Time (ps)')
+    # ax.set_ylabel(r'Reaction Coordinate')
+    # ax.set_zlabel(r'Free Energy (kcal/mol)')
+    #
+    # plot_save('PMF_evolution_3D')
 
     # Plot free energy
     plot_parameters('free energy')
@@ -1059,7 +1069,7 @@ def getUmbrellaInfo(path):
         for j in range(Ntraj):
             try:
                 line = f[15 + j].split()
-                assert len(line) == 5
+                assert len(line) == 5, print(fname)
                 # umbInfo[:, j, i] = line
                 # re-compute average and variance
                 t = float(line[0])
@@ -1131,7 +1141,7 @@ def getRate(path):
 
     rateFreeEnergy = - np.log(rateProb) * rateTemp * 1.3806504E-23 / 4.3597447222071E-18  # Hartree
     # # kB = 1.3806504E-23 (J/K), 1 Hartree = 4.3597447222071e-18 (J)
-    rateRPMDfT = rateRPMD * 2 / (2 + 2 * np.exp(- 205 / rateTemp))
+    rateRPMDfT = rateRPMD * 2 / (2 + 2 * np.exp(- 200.3 / rateTemp))
 
     print('Temperature (K):   \t{:d}'.format(np.int(rateTemp)))
     print('xi^ddagger:        \t{:.3f}'.format(rateMaxxi))
@@ -1221,6 +1231,10 @@ def Window(xi, kforce, trajectories, equilibrationTime, evolutionTime):
 def main(inputFolder=None):
     if inputFolder == None:
         inputFolder = input_path()
+
+    if inputFolder[-4:] == r'\fig':
+        inputFolder = inputFolder[:-4]
+
     global figPath
     figPath = os.path.join(inputFolder, 'fig')
     if not os.path.exists(figPath):
@@ -1240,13 +1254,13 @@ def main(inputFolder=None):
     plot_rexFactor(path)
     plot_xi()
     plot_deviation()
-    # plot_PMF_evolution()
+    plot_PMF_evolution()
     # plot_var_evolution()
     # plot_overlap_density(path)
 
     myEnding()
 
-main()
+main(r'D:\20200914 OHCH4 RPMD 结果\OHCH4\0200-32')
 
 # root = r'C:\Users\60343\Desktop\fin-OD-300_2'
 # for dir in os.listdir(root):
