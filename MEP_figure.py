@@ -300,9 +300,9 @@ def plotMEP(filePath):
 
     plt.tight_layout()
 
-    calc2ndDer(xi, V)
+    # calc2ndDer(xi, V)
 
-    plt.savefig('MEP.png', format='png', dpi=600)
+    plt.savefig('MEP.svg', format='svg')
     plt.clf()
     plt.close()
 
@@ -364,10 +364,12 @@ def plotFreq(path):
     plt.close()
 
 
-def main(path=None):
-    if path is None:
-        path = input('Please input the folder consisting the output of Polyrate: \n')
-    resultPath = findOutputFile(path)
+def main(inputPath=None):
+    if inputPath is None:
+        inputPath = input('Please input the folder consisting the output of Polyrate: \n')
+        global figPath
+        figPath = os.path.join(inputPath, 'fig')
+    resultPath = findOutputFile(inputPath)
     atomList = extractAtomList(resultPath)
 
     print('[INFO] Atoms: ', atomList)
@@ -380,4 +382,4 @@ def main(path=None):
     plotFreq(freqPath)
 
 
-main(os.getcwd())
+main(r'C:\Users\60343\Desktop')

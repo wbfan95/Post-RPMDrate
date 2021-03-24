@@ -7,7 +7,6 @@ V 1.1 # 20191204 13:20:56 Wenbin, FAN @ SHU
 '''
 
 import os
-
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -27,13 +26,25 @@ def plotPara():
     plt.minorticks_on()  # Turn on minor ticks
 
 
+def getName(name, ext):
+    nameOrder = 1
+    while True:
+        newName = '{}_{}.{}'.format(name, nameOrder, ext)
+        if os.path.exists(newName):
+            nameOrder += 1
+        else:
+            break
+
+    return newName
+
+
 def plotSave(title):
     plt.tight_layout()
     foo_fig = plt.gcf()  # 'get current figure'
-    foo_fig.savefig(title + '.png', format='png', dpi=600)
-    plt.show()
-    # plt.clf()
-
+    name = getName(title, 'png')
+    foo_fig.savefig(name, format='png', dpi=600, transparent=True)
+    # plt.show()
+    plt.clf()
 
 def readCoord(file=None, Nbeads=None):
     if file is None:
@@ -64,7 +75,8 @@ def readCoord(file=None, Nbeads=None):
     titles = np.zeros(Nframe)
 
     for frame in range(Nframe):
-        titles[frame] = flines[frame * (Nab + 2) + 1].split()[-1]
+        # titles[frame] = flines[frame * (Nab + 2) + 1].split()[-1]
+        titles[frame] = 0  # np.float(flines[frame * (Nab + 2) + 1])
         for atom in range(Natoms):
             for bead in range(Nbeads):
                 basicFrame = frame * (Nab + 2)
@@ -73,7 +85,7 @@ def readCoord(file=None, Nbeads=None):
                 for i in range(3):
                     coord[i, atom, bead, frame] = line[i + 1]
 
-    return coord, atomList
+    return coord
 
 
 def getCentroid(coord):
@@ -175,37 +187,56 @@ def plotBeads():
 
 def corrFunc(array1d):
     print('[INFO] Computing correlation function... ')
-    ave = np.mean(array1d)  # <x>, mean
-    array1d = array1d - ave
+    # ave = np.mean(array1d)  # <x>, mean
+    # array1d = array1d - ave
 
-    sqr = 0e0  # <x^2>
-    for i in array1d:
-        sqr += i ** 2
-    sqr /= len(array1d)
+    # sqr = 0e0  # <x^2>
+    # for i in array1d:
+    #     sqr += i ** 2
+    # sqr /= len(array1d)
 
-    length = len(array1d)
-    halflen = np.int(length / 2.0)
+    # length = len(array1d)
+    # halflen = np.int(length / 2.0)
 
-    corr = np.zeros(halflen)
-    for i in range(halflen):
-        for j in range(length - i):
-            corr[i] += array1d[j] * array1d[i + j]
+    # corr = np.zeros(halflen)
+    # for i in range(halflen):
+    #     for j in range(length - i):
+    #         corr[i] += array1d[j] * array1d[i + j]
+
+    # effective length
+    x = array1d
+    length = len(x)
+    lenEff = int(np.floor(len(x) / 2))
+    assert lenEff > 0, 'The length of input array must be bigger than 1! '
+    corr = np.zeros(lenEff)
+
+    # move to average
+    mean = np.mean(x)
+    x = x - mean
+    x2mean = np.mean(np.dot(x, x))
+
+    for i in range(lenEff):
+        # tmp = 0
+        #         print('Outer: ', i+1)
+        #         for j in range(length - i):
+        #             tmp += x[j]*x[j+i]
+        tmp = np.dot(x[0:length - i], x[i:length])
+        #             print(j+1,j+i+1)
+        corr[i] = tmp / (length - i)
+
+    corr = corr / x2mean
+    corr = corr / corr[0]
+    # return corr
 
     # write correlation function into a ordered file &
     # to further analysis
-    nameOrder = 1
-    while True:
-        if os.path.exists('corrFunc_{}.txt'.format(nameOrder)):
-            nameOrder += 1
-        else:
-            break
-
-    dataFile = open('corrFunc_{}.txt'.format(nameOrder), 'a')
+    name = getName('corrFuncValue', 'txt')
+    dataFile = open(name, 'a')
 
     for i, value in enumerate(corr):
-        dataFile.write('{0:.6f}\n'.format(value))
+        dataFile.write('{0:.16f}\n'.format(value))
 
-    return corr / sqr
+    return corr
 
 def plotOHCH4():
     bondCH = (getBondLen(5, 1) + getBondLen(5, 2) + getBondLen(5, 3) + getBondLen(5, 4)) / 4.0
@@ -214,7 +245,7 @@ def plotOHCH4():
 
     plotPara()
 
-    ticks = np.linspace(0, Nframe * 10E-4, Nframe)
+    ticks = np.linspace(0, Nframe / 1000, Nframe)
 
     plt.plot(ticks, bondOH, label='O — H', c=color[1])
     plt.plot(ticks, bondCO, label='C — O', c=color[0])
@@ -226,7 +257,7 @@ def plotOHCH4():
 
     plt.xlim(min(ticks), max(ticks))
     plotSave('bondLength')
-    plt.show()
+    # plt.show()
 
     # Correlation Function
     plotPara()
@@ -234,7 +265,7 @@ def plotOHCH4():
     corrOH = corrFunc(bondOH)
     corrCO = corrFunc(bondCO)
 
-    ticks = np.linspace(0, Nframe * 10E-4 / 2, int(Nframe / 2))
+    ticks = np.linspace(0, Nframe / 1000 / 2, int(Nframe / 2))  # to ps
 
     plt.plot(ticks, corrOH, label='O — H', c=color[1])
     plt.plot(ticks, corrCO, label='C — O', c=color[0])
@@ -244,10 +275,24 @@ def plotOHCH4():
     plt.xlabel(r'Time / ps')
     plt.ylabel('Correlation Function')
     plt.xlim(min(ticks), max(ticks))
-    plt.yticks([0])
+    plt.yticks([0, 1])
 
     plotSave('CorrFunc')
-    plt.show()
+
+    # scaled correlation function
+    plotPara()
+    plt.plot(ticks, corrOH, label='O — H', c=color[1])
+    plt.plot(ticks, corrCO, label='C — O', c=color[0])
+    plt.plot(ticks, corrCH, label='C — other H', c=color[2])
+
+    plt.legend()
+    plt.xlabel(r'Time / ps')
+    plt.ylabel('Correlation Function')
+    # plt.xlim(min(ticks), max(ticks))
+    plt.xlim(0, 1)
+    plt.yticks([0, 1])
+
+    plotSave('CorrFunc_scaled')
 
 def plotH3():
     # Bond Length
@@ -323,15 +368,86 @@ def plotMgH2():
     plt.show()
 
 
-def main():
-    path = input('Please input the path of `.xyz`: \n')
+def plotHOCO():
+    bond14 = getBondLen(0, 3)
+    bond23 = getBondLen(1, 2)
 
-    coord, atomList = readCoord(path)
+    plotPara()
+    plt.plot(bond14, label='O — H', c=color[0])
+    plt.plot(bond23, label="C — O", c=color[1])
+
+    plt.legend()
+    plt.xlabel(r'Frames')
+    plt.ylabel('Bond Length / Å')
+    plt.xlim(0, Nframe)
+
+    plotSave('bondLength')
+    # plt.show()
+
+    plotPara()
+    corr14 = corrFunc(bond14)
+    corr23 = corrFunc(bond23)
+
+    plt.plot(corr14, label='O — H', c=color[0])
+    plt.plot(corr23, label="C — O", c=color[1])
+
+    plt.legend()
+    plt.xlabel(r'Frames')
+    plt.ylabel('Correlation Function')
+    plt.xlim(0, 2000)
+    plt.yticks([0])
+
+    plotSave('CorrFunc')
+    # plt.show()
+
+    return
+
+
+def plotHOCO12():
+    cf = np.zeros((3, 4, int(Nframe / 2)))  # xyz, 4 atoms
+
+    plotPara()
+    for i in range(3):
+        for j in range(4):
+            cf[i, j, :] = corrFunc(centr[i, j])
+            plt.plot(cf[i, j], '-', c='grey', lw=1)
+            print(i, j)
+
+    plt.xlim(0, int(Nframe / 2))
+
+    plt.plot(np.mean(cf, axis=(0, 1)), c='black', lw=2)
+    plt.show()
+
+    return
+
+def main():
+    # path = input('Please input the path of `.xyz`: \n')
+
+    path = r'D:\20210317_HOCO-30K-traj\equilibrate_centroid_0.80.xyz'
+    coord = readCoord(path, Nbeads=1)
+    print(np.shape(coord), np.shape(titles))
+
+    # plotPara()
+    # for i in range(3):
+    #     for j in range(3):
+    #         plt.plot(titles[:],coord[i,j,0,:])#,'o-',markersize=1)
+    # plt.xlabel(r'$\xi$')
+    # plt.ylabel('Coordinate component (Å)')
+    # plotSave('opt-componet')
+    # plt.show()
+
     centr = getCentroid(coord)
 
-    plotOHCH4()
+    global Nframe
+    # Nframe = 10000
+    # plotHOCO()
+    plotHOCO12()
+    # plotOHCH4()
     # plotH3()
     # plotMgH2()
+    # plotBeads()
+
+
 
 main()
 
