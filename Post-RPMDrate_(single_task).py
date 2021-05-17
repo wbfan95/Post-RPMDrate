@@ -166,6 +166,7 @@ def plot_overlap():
 
     resolution = 2000
     extend = 0.03  # 3E-2
+    nSigma = 3
 
     xiMin = np.min(xi_list)
     xiMax = np.max(xi_list)
@@ -182,6 +183,8 @@ def plot_overlap():
             plt.axvline(xi_list[i], ls='--', c='red', lw=0.2)
             print('[ERROR] Variance at `xi = {}` is ZERO! '.format(xi_list[i]))
         else:
+            x = np.linspace(xav - nSigma * np.sqrt(xav2), xav + nSigma * np.sqrt(xav2), resolution)
+            y = my_gaussian(x, xav, xav2)
             y_new = my_gaussian(x_new, xav, xav2)
 
             # Find biggest population
@@ -191,9 +194,9 @@ def plot_overlap():
             y_sum += y_new  # sum all population
             if xav2 > 5.0E-5:
                 print("[WARNING] May be too various in xi = {}! ".format(xi_list[i]))
-                plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.9)
+                plt.plot(x, y, lw=1, c=color[1], alpha=0.9)
             else:
-                plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
+                plt.plot(x, y, lw=0.5, c=color[0], alpha=.3)
 
     # Plot summation and difference
     plt.plot(x_new, y_sum, lw=1, c=color[0], label=mylabel,
@@ -207,6 +210,7 @@ def plot_overlap():
     plt.ylim(0.1, max(y_sum) * 1.2)
     plt.yticks([])  # No ticks and labels in y axis
     plt.legend(loc='upper left')
+    plt.minorticks_on()
 
     # overlap ratio
     xbar = umbInfo[3, NtrajEff - 1, :]
@@ -216,10 +220,13 @@ def plot_overlap():
     overlapRatio = np.zeros(length - 1)
     for i in range(length - 1):
         overlapRatio[i] = overlapArea(xbar[i], xvar[i], xbar[i + 1], xvar[i + 1])
+
+        if overlapRatio[i] > 0.99:
+            print('[WARN] Windows coincide! Check `{}` and `{}`! '.format(xi_list[i], xi_list[i + 1]))
         # continue
 
     plotRatio = plt.twinx()
-    plotRatio.plot(overlapList, overlapRatio, 'o-', c=color[1], markersize=4, lw=1.5)
+    plotRatio.plot(overlapList, overlapRatio, 'o-', c=color[1], markersize=2, lw=0.5)
     plotRatio.axis(ymin=0, ymax=1)
 
     plot_save(title)
@@ -256,15 +263,16 @@ def plot_variance():
 
         for j in range(len(xivar)):
             if j > 0:
-                varCurrent = (umbInfo[1, j, i] - umbInfo[1, j - 1, i]) / (umbInfo[2, j, i] - umbInfo[2, j - 1, i]) - \
-                             ((umbInfo[0, j, i] - umbInfo[0, j - 1, i]) / (
+                if abs(umbInfo[2, j, i] - umbInfo[2, j - 1, i]) > 1E-18:
+                    varCurrent = (umbInfo[1, j, i] - umbInfo[1, j - 1, i]) / (umbInfo[2, j, i] - umbInfo[2, j - 1, i]) - \
+                                 ((umbInfo[0, j, i] - umbInfo[0, j - 1, i]) / (
                                          umbInfo[2, j, i] - umbInfo[2, j - 1, i])) ** 2
-                if varCurrent / umbInfo[4, j, i] - 1 > 1:
-                    if jumpCount == 0:
-                        print('[INFO] Large jump: xi, step/10000, Current var, var')
-                    print('{:.3f}\t{:>5d}\t{:.3e}\t{:.3e}'.format(xi_list[i], np.int(umbInfo[2, j, i] / 10000),
-                                                                  varCurrent, umbInfo[4, j, i]))
-                    jumpCount += 1
+                    if varCurrent / umbInfo[4, j, i] - 1 > 1:
+                        if jumpCount == 0:
+                            print('[INFO] Large jump: xi, step/10000, Current var, var')
+                        print('{:.3f}\t{:>5d}\t{:.3e}\t{:.3e}'.format(xi_list[i], np.int(umbInfo[2, j, i] / 10000),
+                                                                      varCurrent, umbInfo[4, j, i]))
+                        jumpCount += 1
 
         # xivarDelta = []
         # for i in range(len(xivar)-1):
@@ -332,6 +340,10 @@ def plot_var_evolution():
     timeMax = np.max(umbInfo[2, :, :]) * 1E-3 * delta
 
     for i in range(length):
+
+        devFileName = 'Variances\\{:0>3d}_{:.4f}'.format(i, xi_list[i])
+        if os.path.exists(os.path.join(figPath, devFileName + '.png')):
+            continue
 
         fig = plt.figure()
         gs = gridspec.GridSpec(2, 2)
@@ -446,7 +458,7 @@ def plot_var_evolution():
                      x=0., y=0.95, horizontalalignment='left', verticalalignment='bottom')
         # fig.suptitle(mylabel,
         #              x=1, y=0.95, horizontalalignment='right', verticalalignment='bottom')
-        plot_save('Variances\\{:0>3d}_{:.3f}'.format(i, xi_list[i]))
+        plot_save(devFileName)
 
     return
 
@@ -488,6 +500,7 @@ def plot_deviation():
     # plot_var.set_minorticks_on()
 
     plot_var.legend(loc='best')
+    plt.show()
     plot_save('xi_dev')
 
 def plot_pmf(path):
@@ -765,7 +778,7 @@ def plot_PMF_evolution():
         return
 
     print('[INFO] Computing PMF evolution...')
-    # clearFolder('PMF')
+    clearFolder('PMF')
 
     # Constants
     bins = 500
@@ -826,12 +839,12 @@ def plot_PMF_evolution():
 
             timeCurrent = umbInfo[2, cycle, 0] * delta  # * 1E-3
 
-            # plot_parameters('PMF at time {:.0f} ps'.format(timeCurrent))
-            # plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.0f} ps'.format(timeCurrent))
-            # plt.xlabel(r'Reaction Coordinate')
-            # plt.ylabel(r'$W(\xi)$ (kcal/mol)')
-            # plt.legend(loc='upper left')
-            # plot_save('PMF\\{:.0f}'.format(timeCurrent))
+            plot_parameters('PMF at time {:.0f} ps'.format(timeCurrent))
+            plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.0f} ps'.format(timeCurrent))
+            plt.xlabel(r'Reaction Coordinate')
+            plt.ylabel(r'$W(\xi)$ (kcal/mol)')
+            plt.legend(loc='upper left')
+            plot_save('PMF\\{:.0f}'.format(timeCurrent))
 
         # calculate free energy
         pmfMaxValue = np.max(PMFcurrent)
@@ -968,7 +981,7 @@ def plot_xi():
         tscolor = (np.int((255. * i / length)) / 255.0,
                    0.,
                    (np.int(-255. * i / length + 255)) / 255.0)
-        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor)
+        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor, lw=0.2)
 
     plt.xlim(0, timeMax)
     plt.xlabel('Time (ps)')
@@ -981,7 +994,8 @@ def plot_xi():
 
 def getBasicInfo(path):
     # get the name of submitting script
-    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf', 'sub.pbs', 'fat.yy']  # submitting script
+    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf', 'sub.pbs', 'fat.yy',
+               'sub.pbc']  # submitting script
     subName = ''
     subPath = ''
     for i, name in enumerate(subList):
@@ -1213,6 +1227,7 @@ def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
         for i, line in enumerate(kflines):
             kforce_list[i] = np.float(line.split()[1])
             # print('kforce: {}'.format(kforce_list[i]))
+    xi_list, kforce_list = (list(t) for t in zip(*sorted(zip(xi_list, kforce_list))))
     return xi_list, kforce_list
 
 def computePotentialOfMeanForce(windows=None, xi_min=None, xi_max=None, bins=5000):
@@ -1266,9 +1281,9 @@ def main(inputFolder=None):
     myEnding()
 
 
-main(r'D:\20200914 OHCH4 RPMD 结果\0200-32_covTest')
+main()
 
-# root = r'C:\Users\60343\Desktop\fin-OD-300_2'
+# root = r'D:\20200914 OHCH4 RPMD 结果\KIE_C_20210428'
 # for dir in os.listdir(root):
 #     print(dir)
 #     main(os.path.join(root, dir))
