@@ -466,6 +466,8 @@ def plot_var_evolution():
 def plot_deviation():
     title = 'deviation'
     plot_parameters(title)
+    plt.figure(figsize=(8, 3))
+    plt.minorticks_on()
 
     formatter = ticker.ScalarFormatter(useMathText=True)
     formatter.set_scientific(True)
@@ -476,31 +478,40 @@ def plot_deviation():
 
     # NtrajEff
     xi_dev = np.zeros(len(xi_list))
+    k_xi_dev = np.zeros(len(xi_list))
     var = np.zeros(len(xi_list))
+    xi_dev_var = np.zeros(len(xi_list))
 
     for i in range(len(xi_list)):
         xi_dev[i] = umbInfo[3, NtrajEff - 1, i] - xi_list[i]
         tmp = umbInfo[1, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i] - \
               (umbInfo[0, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i]) ** 2
-        var[i] = tmp * kforce_list[i] * 627.509474063056  # to kcal/mol
-        if var[i] > 5E-3:
-            print("[INFO] The variance in xi={:.4f} is too large! ".format(xi_list[i]))
-        # * temp *, no temperature here.
+        k_xi_dev[i] = kforce_list[i] * xi_dev[i]
+        var[i] = tmp  # * kforce_list[i] * 627.509474063056  # to kcal/mol
+        xi_dev_var[i] = xi_dev[i] / var[i]
+        # if var[i] > 5E-3:
+        #    print("[INFO] The variance in xi={:.4f} is too large! ".format(xi_list[i]))
+        ## * temp *, no temperature here.
 
-    plt.plot(xi_list, xi_dev, c=color[0])
+    plt.plot(xi_list, k_xi_dev, 'o-', c=color[0], markersize=1, lw=0.5)
     plt.gca().yaxis.set_major_formatter(formatter)
     plt.xlabel('$\\xi$')
-    plt.ylabel('$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
+    plt.ylabel('$k(\\xi - \\xi^{\\mathrm{ref}})$')
+    kxiMax = max(abs(k_xi_dev))
+    plt.ylim(-kxiMax * 1.2, kxiMax * 1.2)
 
     plot_var = plt.twinx()
-    plot_var.plot(xi_list[0], var[0], c=color[0], label='$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
-    plot_var.plot(xi_list, var, c=color[1], label='$\\sigma_i k_i$')
+    plot_var.plot(xi_list[0], xi_dev_var[0], c=color[0], label='$k(\\xi - \\xi^{\\mathrm{ref}})$')
+    plot_var.plot(xi_list, xi_dev_var, 'o-', c=color[1], marker='^', markersize=1, lw=0.5,
+                  label='$(\\xi - \\xi^{\\mathrm{ref}})/\sigma^2$')
     plot_var.yaxis.set_major_formatter(formatter2)
-    plot_var.set_ylabel('$\\sigma_i k_i $ (kcal/mol)')
+    plot_var.set_ylabel('$(\\xi - \\xi^{\\mathrm{ref}})/\sigma^2$')
+    xivarMax = max(abs(xi_dev_var))
+    plot_var.set_ylim(-xivarMax * 1.2, xivarMax * 1.2)
     # plot_var.set_minorticks_on()
 
     plot_var.legend(loc='best')
-    plt.show()
+    # plt.show()
     plot_save('xi_dev')
 
 def plot_pmf(path):
@@ -1084,6 +1095,7 @@ def getUmbrellaInfo(path):
     for i in range(Nwindows):
         fname = path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[i])
         f = open(fname, 'r').readlines()
+        Nstep = int(f[9].split()[6].replace('(', ''))
 
         for j in range(Ntraj):
             try:
@@ -1099,6 +1111,14 @@ def getUmbrellaInfo(path):
                 umbInfo[0:5, j, i] = [t, t2, n, average, variance]
             except IndexError:
                 umbInfo[:, j, i] = None
+
+        # combine different batches, 2021-06-27 13:44:03 Wenbin, FAN @ SHU
+        for j in range(1, Ntraj):
+            if umbInfo[2, j, i] - umbInfo[2, j - 1, i] != Nstep:
+                for k in range(j):
+                    umbInfo[:3, k, i] += umbInfo[:3, j - 1, i]
+        umbInfo[3, :, i] = umbInfo[0, :, i] / umbInfo[2, :, i]
+        umbInfo[4, :, i] = umbInfo[1, :, i] / umbInfo[2, :, i] - umbInfo[3, :, i] * umbInfo[3, :, i]
 
     return umbInfo
 
@@ -1266,7 +1286,7 @@ def main(inputFolder=None):
     getUmbrellaInfo(path)
     getRate(path)
 
-    # # plot
+    # plot
     plotKForce()
     plot_overlap()
     plot_variance()
@@ -1281,9 +1301,9 @@ def main(inputFolder=None):
     myEnding()
 
 
-main()
+main(r'C:\Users\60343\Desktop\10K')
 
-# root = r'D:\20200914 OHCH4 RPMD 结果\KIE_C_20210428'
+# root = r'D:\20210524 HOCO rex\HOCO_30K'
 # for dir in os.listdir(root):
 #     print(dir)
 #     main(os.path.join(root, dir))
