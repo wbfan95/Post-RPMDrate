@@ -1,8 +1,8 @@
 '''
 Author: Wenbin FAN
 First Release: Oct. 30, 2019
-Modified: 2021-02-08 23:02:33 Wenbin, FAN @ SHU
-Verision: 1.7
+Modified: 2022-07-11 21:19:44 Wenbin FAN @FDU
+Verision: 1.8
 
 [Intro]
 Plot
@@ -32,8 +32,6 @@ Thanks for using this python program, with the respect to my supervisor Prof. Yo
 Great thanks to Yang Hui.
 
 [Bug Fixing]
-V1.7:
-1) calculate overlap area between adjacent windows
 V1.6:
 1) compute variance in each traj, pump the large jump.
 2) show upper bound of force constants.
@@ -61,7 +59,6 @@ import matplotlib.gridspec as gridspec
 from matplotlib import ticker
 import numpy as np
 import pandas as pd
-import scipy.special as scp
 
 color = ['#00447c', '#ae0d16', '#47872c', '#800964']
 # SHU Blue, Weichang Red, Willow Green, SHU Purple
@@ -89,9 +86,9 @@ def clearFolder(path):
         os.makedirs(os.path.join(figPath, path))
 
 
-def plot_parameters(title):
+def plot_parameters(title, width=4):
     print('[INFO] Plotting {}! '.format(title))
-    plt.figure(figsize=(4, 3))
+    plt.figure(figsize=(width, 3))
     plt.rcParams["font.family"] = "Times New Roman"
     plt.rcParams["mathtext.fontset"] = "stix"  # The font closet to Times New Roman
     plt.rcParams['xtick.direction'] = 'in'
@@ -124,41 +121,6 @@ def my_gaussian(x, xav, xav2):
     return y
 
 
-def overlapArea(a1, v1, a2, v2):
-    eps = 1E-15
-    # variance 2 > 1
-    if abs(v1 - v2) > eps:
-        if v1 > v2:
-            a1, a2 = a2, a1
-            v1, v2 = v2, v1
-
-        delta = (a1 - a2) * (a1 - a2) + (v1 - v2) * np.log(v1 / v2)
-        delta = delta * v1 * v2
-        delta = np.sqrt(delta)
-        bb = a2 * v1 - a1 * v2
-        c1 = (bb + delta) / (v1 - v2)
-        c2 = (bb - delta) / (v1 - v2)
-        assert c1 < c2, "Check the solution of overlapping Gaussian function! "
-        # print(c1, c2)
-
-        S1 = scp.erf((a1 - c1) / np.sqrt(2.0 * v1)) - 1
-        S2 = scp.erf((a2 - c2) / np.sqrt(2.0 * v2)) - scp.erf((a2 - c1) / np.sqrt(2.0 * v2))
-        S3 = -1 - scp.erf((a1 - c2) / np.sqrt(2.0 * v1))
-
-        S = S1 + S2 + S3
-        S = S / (-2.0)
-    else:
-        if a1 > a2:
-            a1, a2 = a2, a1
-
-        c = (a1 + a2) / 2.0
-        # print(c)
-        S = scp.erf((a2 - c) / np.sqrt(2.0 * v1)) - 1
-        S = S * 2 / (-2.0)
-
-    assert S <= 1, "The overlap could never more than 1! "
-    return S
-
 def plot_overlap():
     title = 'Overlap'
     plot_parameters(title)
@@ -166,7 +128,6 @@ def plot_overlap():
 
     resolution = 2000
     extend = 0.03  # 3E-2
-    nSigma = 3
 
     xiMin = np.min(xi_list)
     xiMax = np.max(xi_list)
@@ -183,8 +144,6 @@ def plot_overlap():
             plt.axvline(xi_list[i], ls='--', c='red', lw=0.2)
             print('[ERROR] Variance at `xi = {}` is ZERO! '.format(xi_list[i]))
         else:
-            x = np.linspace(xav - nSigma * np.sqrt(xav2), xav + nSigma * np.sqrt(xav2), resolution)
-            y = my_gaussian(x, xav, xav2)
             y_new = my_gaussian(x_new, xav, xav2)
 
             # Find biggest population
@@ -192,43 +151,26 @@ def plot_overlap():
                 maxPop = max(y_new)
 
             y_sum += y_new  # sum all population
-            if xav2 > 5.0E-5:
+            if xav2 > 1.0E-4:
                 print("[WARNING] May be too various in xi = {}! ".format(xi_list[i]))
-                plt.plot(x, y, lw=1, c=color[1], alpha=0.9)
+                plt.plot(x_new, y_new, lw=1, c=color[1], alpha=0.8)
             else:
-                plt.plot(x, y, lw=0.5, c=color[0], alpha=.3)
+                plt.plot(x_new, y_new, lw=0.5, c=color[0], alpha=.3)
 
     # Plot summation and difference
-    plt.plot(x_new, y_sum, lw=1, c=color[0], label=mylabel,
-             alpha=0.5)  # label='Summation of all populations')  # SHU Blue
+    plt.plot(x_new, y_sum, lw=1, c=color[0], label=mylabel)  # label='Summation of all populations')  # SHU Blue
 
     # plt.xlabel('Reaction Coordinate / Å')
     plt.xlabel('Reaction Coordinate')
     plt.ylabel('Population')
+
     plt.xlim(xiMin - extend, xiMax + extend)
     # plt.ylim(0, maxPop*1.1)
-    plt.ylim(0.1, max(y_sum) * 1.2)
+    plt.ylim(0, max(y_sum) * 1.2)
+
     plt.yticks([])  # No ticks and labels in y axis
+
     plt.legend(loc='upper left')
-    plt.minorticks_on()
-
-    # overlap ratio
-    xbar = umbInfo[3, NtrajEff - 1, :]
-    xvar = umbInfo[4, NtrajEff - 1, :]
-    # overlapList = (xi_list[:-1] + xi_list[1:]) / 2
-    overlapList = (xbar[:-1] + xbar[1:]) / 2
-    overlapRatio = np.zeros(length - 1)
-    for i in range(length - 1):
-        overlapRatio[i] = overlapArea(xbar[i], xvar[i], xbar[i + 1], xvar[i + 1])
-
-        if overlapRatio[i] > 0.99:
-            print('[WARN] Windows coincide! Check `{}` and `{}`! '.format(xi_list[i], xi_list[i + 1]))
-        # continue
-
-    plotRatio = plt.twinx()
-    plotRatio.plot(overlapList, overlapRatio, 'o-', c=color[1], markersize=2, lw=0.5)
-    plotRatio.axis(ymin=0, ymax=1)
-
     plot_save(title)
 
 
@@ -263,16 +205,15 @@ def plot_variance():
 
         for j in range(len(xivar)):
             if j > 0:
-                if abs(umbInfo[2, j, i] - umbInfo[2, j - 1, i]) > 1E-18:
-                    varCurrent = (umbInfo[1, j, i] - umbInfo[1, j - 1, i]) / (umbInfo[2, j, i] - umbInfo[2, j - 1, i]) - \
-                                 ((umbInfo[0, j, i] - umbInfo[0, j - 1, i]) / (
+                varCurrent = (umbInfo[1, j, i] - umbInfo[1, j - 1, i]) / (umbInfo[2, j, i] - umbInfo[2, j - 1, i]) - \
+                             ((umbInfo[0, j, i] - umbInfo[0, j - 1, i]) / (
                                          umbInfo[2, j, i] - umbInfo[2, j - 1, i])) ** 2
-                    if varCurrent / umbInfo[4, j, i] - 1 > 1:
-                        if jumpCount == 0:
-                            print('[INFO] Large jump: xi, step/10000, Current var, var')
-                        print('{:.3f}\t{:>5d}\t{:.3e}\t{:.3e}'.format(xi_list[i], np.int(umbInfo[2, j, i] / 10000),
-                                                                      varCurrent, umbInfo[4, j, i]))
-                        jumpCount += 1
+                if varCurrent / umbInfo[4, j, i] - 1 > 1:
+                    if jumpCount == 0:
+                        print('[INFO] Large jump: xi, step/10000, Current var, var')
+                    print('{:.3f}\t{:>5d}\t{:.3e}\t{:.3e}'.format(xi_list[i], int(umbInfo[2, j, i] / 10000),
+                                                                  varCurrent, umbInfo[4, j, i]))
+                    jumpCount += 1
 
         # xivarDelta = []
         # for i in range(len(xivar)-1):
@@ -285,20 +226,20 @@ def plot_variance():
         #     xivar[i] = xivar[i] - xivar[0]
 
         # define transition color # from SHU blue (xi = 0) to Weichang red (xi = 1)
-        # tscolor = (np.int(((Tcolor2[0] - Tcolor1[0]) * i / length + 0)) / 255.0,
-        #            (np.int((Tcolor2[1] - Tcolor1[1]) * i / length + 68)) / 255.0,
-        #            (np.int((Tcolor2[2] - Tcolor1[2]) * i / length + 124)) / 255.0)
-        tscolor = (np.int((255. * i / length)) / 255.0,
+        # tscolor = (int(((Tcolor2[0] - Tcolor1[0]) * i / length + 0)) / 255.0,
+        #            (int((Tcolor2[1] - Tcolor1[1]) * i / length + 68)) / 255.0,
+        #            (int((Tcolor2[2] - Tcolor1[2]) * i / length + 124)) / 255.0)
+        tscolor = (int((255. * i / length)) / 255.0,
                    0.,
-                   (np.int(-255. * i / length + 255)) / 255.0)
+                   (int(-255. * i / length + 255)) / 255.0)
         # colorList = list(tscolor)
         # colorPrint = []
         # for j in range(3):
-        #     colorPrint.append(np.int(colorList[j] * 255))
+        #     colorPrint.append(int(colorList[j] * 255))
         # print('{:.3f}\t{:}'.format(xi_list[i], colorPrint))
 
         # color = (np.random.rand(), np.random.rand(), np.random.rand())
-        plt.plot(timeEvolution, xivar, lw=1, c=tscolor)  # , alpha=0.5)
+        plt.plot(timeEvolution, xivar, lw=1, c=tscolor, alpha=0.5)
 
         if max(timeEvolution) > timeMax:
             timeMax = max(timeEvolution)
@@ -322,6 +263,88 @@ def plot_variance():
     plot_save(title)
 
 
+def plot_variance_diff():
+    if NtrajEff == 1:
+        return
+
+    title = 'Variance_diff'
+    plot_parameters(title)
+
+    xiMin = np.min(xi_list)
+    xiMax = np.max(xi_list)
+    length = len(xi_list)
+
+    timeMax = 0.0
+    timeMin = 1E5
+    jumpCount = 0
+
+    v = []
+
+    for i in range(length):
+        av = umbInfo[0, :, i]
+        av2 = umbInfo[1, :, i]
+        timeEvolution = umbInfo[2, :, i]
+
+        Nsample = len(av)
+        variance = np.zeros(Nsample)
+        for j in range(Nsample):
+            if j == 0:
+                dmean = av[0] / timeEvolution[0]
+                variance[0] = av2[0] / timeEvolution[0] - dmean * dmean
+            else:
+                dt = timeEvolution[j] - timeEvolution[j-1]
+                dmean = (av[j] - av[j-1])  / dt
+                variance[j] = (av2[j] - av2[j-1]) / dt - dmean * dmean
+                # print(i, xi_list[i], variance[j], dt, dmean, av[j], av2[j])
+
+        v.append(variance)
+
+
+        tscolor = (int((255. * i / length)) / 255.0,
+                   0.,
+                   (int(-255. * i / length + 255)) / 255.0)
+
+        timeStep = delta
+        timeEvolution = [x * timeStep for x in timeEvolution]  # 0.1 fs to 1 ns
+
+        plt.plot(timeEvolution, variance, lw=0.2, c=tscolor, alpha=0.4)
+
+        if max(timeEvolution) > timeMax:
+            timeMax = max(timeEvolution)
+        if min(timeEvolution) < timeMin:
+            timeMin = min(timeEvolution)
+
+    plt.xlabel('Time (ps)')
+    plt.ylabel('Variance')
+
+    # print(umbInfo[2, 0, 0] * delta * 1E-3, umbInfo[2, -1, 0] * delta * 1E-3)
+    plt.xlim(timeMin, timeMax)
+    # 2 is 3rd column, -1 is the time in last frame, 0 is random (other number is ojbk).
+
+    # Scientific notation for y axis
+    # # plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().yaxis.set_major_formatter(formatter)
+
+    plot_save(title)
+
+    title = 'Variance_diff_box'
+    plot_parameters(title, width=8)
+    plt.boxplot(v, positions=xi_list, widths=0.003, labels=None, sym='x')
+    plt.xlim(xiMin, xiMax)
+
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().yaxis.set_major_formatter(formatter)
+
+    plot_save(title)
+
+    return
+
+
 def plot_var_evolution():
     if NtrajEff == 1:
         return
@@ -340,10 +363,6 @@ def plot_var_evolution():
     timeMax = np.max(umbInfo[2, :, :]) * 1E-3 * delta
 
     for i in range(length):
-
-        devFileName = 'Variances\\{:0>3d}_{:.4f}'.format(i, xi_list[i])
-        if os.path.exists(os.path.join(figPath, devFileName + '.png')):
-            continue
 
         fig = plt.figure()
         gs = gridspec.GridSpec(2, 2)
@@ -458,7 +477,7 @@ def plot_var_evolution():
                      x=0., y=0.95, horizontalalignment='left', verticalalignment='bottom')
         # fig.suptitle(mylabel,
         #              x=1, y=0.95, horizontalalignment='right', verticalalignment='bottom')
-        plot_save(devFileName)
+        plot_save('Variances\\{:0>3d}_{:.3f}'.format(i, xi_list[i]))
 
     return
 
@@ -466,8 +485,6 @@ def plot_var_evolution():
 def plot_deviation():
     title = 'deviation'
     plot_parameters(title)
-    plt.figure(figsize=(8, 3))
-    plt.minorticks_on()
 
     formatter = ticker.ScalarFormatter(useMathText=True)
     formatter.set_scientific(True)
@@ -478,40 +495,28 @@ def plot_deviation():
 
     # NtrajEff
     xi_dev = np.zeros(len(xi_list))
-    k_xi_dev = np.zeros(len(xi_list))
     var = np.zeros(len(xi_list))
-    xi_dev_var = np.zeros(len(xi_list))
 
     for i in range(len(xi_list)):
         xi_dev[i] = umbInfo[3, NtrajEff - 1, i] - xi_list[i]
         tmp = umbInfo[1, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i] - \
               (umbInfo[0, NtrajEff - 1, i] / umbInfo[2, NtrajEff - 1, i]) ** 2
-        k_xi_dev[i] = kforce_list[i] * xi_dev[i]
-        var[i] = tmp  # * kforce_list[i] * 627.509474063056  # to kcal/mol
-        xi_dev_var[i] = xi_dev[i] / var[i]
-        # if var[i] > 5E-3:
-        #    print("[INFO] The variance in xi={:.4f} is too large! ".format(xi_list[i]))
-        ## * temp *, no temperature here.
+        var[i] = tmp * kforce_list[i] * 627.509474063056  # to kcal/mol
+        # * temp *, no temperature here.
 
-    plt.plot(xi_list, k_xi_dev, 'o-', c=color[0], markersize=1, lw=0.5)
+    plt.plot(xi_list, xi_dev, c=color[0])
     plt.gca().yaxis.set_major_formatter(formatter)
     plt.xlabel('$\\xi$')
-    plt.ylabel('$k(\\xi - \\xi^{\\mathrm{ref}})$')
-    kxiMax = max(abs(k_xi_dev))
-    plt.ylim(-kxiMax * 1.2, kxiMax * 1.2)
+    plt.ylabel('$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
 
     plot_var = plt.twinx()
-    plot_var.plot(xi_list[0], xi_dev_var[0], c=color[0], label='$k(\\xi - \\xi^{\\mathrm{ref}})$')
-    plot_var.plot(xi_list, xi_dev_var, 'o-', c=color[1], marker='^', markersize=1, lw=0.5,
-                  label='$(\\xi - \\xi^{\\mathrm{ref}})/\sigma^2$')
+    plot_var.plot(xi_list[0], var[0], c=color[0], label='$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
+    plot_var.plot(xi_list, var, c=color[1], label='$\\sigma_i k_i$')
     plot_var.yaxis.set_major_formatter(formatter2)
-    plot_var.set_ylabel('$(\\xi - \\xi^{\\mathrm{ref}})/\sigma^2$')
-    xivarMax = max(abs(xi_dev_var))
-    plot_var.set_ylim(-xivarMax * 1.2, xivarMax * 1.2)
+    plot_var.set_ylabel('$\\sigma_i k_i $ (kcal/mol)')
     # plot_var.set_minorticks_on()
 
     plot_var.legend(loc='best')
-    # plt.show()
     plot_save('xi_dev')
 
 def plot_pmf(path):
@@ -807,11 +812,9 @@ def plot_PMF_evolution():
     PMFdata = np.zeros((bins - 1, totalCycle))
     freeEnergy = np.zeros((3, totalCycle))  # time, xi, free energy
 
-    g = open(os.path.join(figPath, 'freeEnergy_data.txt'), 'w')
-
     for cycle in range(totalCycle):
         # save 10 PMF figures
-        if True:  # (cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
+        if True:#(cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
             # for cycle in [-1]:
             print('       Computing PMF evolution {} of {}'.format(cycle + 1, totalCycle))
             N = umbInfo[2, cycle, :]
@@ -850,6 +853,7 @@ def plot_PMF_evolution():
 
             timeCurrent = umbInfo[2, cycle, 0] * delta  # * 1E-3
 
+
             plot_parameters('PMF at time {:.0f} ps'.format(timeCurrent))
             plt.plot(binList[:-1], PMFcurrent, c=color[0], label='{:.0f} ps'.format(timeCurrent))
             plt.xlabel(r'Reaction Coordinate')
@@ -862,9 +866,6 @@ def plot_PMF_evolution():
         pmfMaxIndex = PMFcurrent.index(pmfMaxValue)
         freeEnergy[:, cycle] = timeCurrent, binList[pmfMaxIndex], pmfMaxValue
 
-        g.write('{:5d}\t{:.6f}\t{:.6f}\t{:.18f}\n'.format(cycle, freeEnergy[0, cycle], freeEnergy[1, cycle],
-                                                          freeEnergy[2, cycle]))
-        g.flush()
 
     # # write PMF datas
     # f = open('PMF_data.txt', 'w')
@@ -882,45 +883,43 @@ def plot_PMF_evolution():
                                                       i, j]))  # time to ns # ps # 2020-05-02 15:44:43 Wenbin, FAN @ SHU
     f.close()
 
-    g.close()
+    # Plot PMF evolution
+    plot_parameters('PMF evolution')
 
-    # # Plot PMF evolution
-    # plot_parameters('PMF evolution')
-    #
-    # a = pd.read_csv(os.path.join(figPath, 'PMF_data.txt'), sep='\t', header=None)
-    #
-    # traj = list(a.iloc[:, 0])
-    # xibins = list(a.iloc[:, 1])
-    # pmfvalue = list(a.iloc[:, 2])
-    #
-    # pmfMin = np.min(pmfvalue)
-    # pmfMax = np.max(pmfvalue)
-    # level = np.arange(np.int(pmfMin) - 2, np.int(pmfMax) + 2, 1)
-    #
-    # plt.tricontourf(traj, xibins, pmfvalue, levels=level, cmap='Blues')
-    # plt.colorbar()
-    # plt.tricontour(traj, xibins, pmfvalue, linestyles='-', levels=level, colors='Black', linewidths=0.2)
-    #
-    # plt.xlabel(r'Time (ps)')
-    # plt.ylabel(r'Reaction Coordinate')
-    # plot_save('PMF_evolution')
-    #
-    # # 3D plot
-    # # print(len(traj), (totalCycle, bins - 1))
-    # X = np.reshape(traj, (totalCycle, bins - 1))
-    # Y = np.reshape(xibins, (totalCycle, bins - 1))
-    # Z = np.reshape(pmfvalue, (totalCycle, bins - 1))
-    #
-    # fig = plt.figure(figsize=(5, 3.75))  # 1.25 * (4,3)
-    # ax = fig.gca(projection='3d')
-    # ax.plot_surface(X, Y, Z, cmap='Blues', linewidth=0.2, edgecolors='black')
-    # ax.view_init(elev=20, azim=30)
-    #
-    # ax.set_xlabel(r'Time (ps)')
-    # ax.set_ylabel(r'Reaction Coordinate')
-    # ax.set_zlabel(r'Free Energy (kcal/mol)')
-    #
-    # plot_save('PMF_evolution_3D')
+    a = pd.read_csv(os.path.join(figPath, 'PMF_data.txt'), sep='\t', header=None)
+
+    traj = list(a.iloc[:, 0])
+    xibins = list(a.iloc[:, 1])
+    pmfvalue = list(a.iloc[:, 2])
+
+    pmfMin = np.min(pmfvalue)
+    pmfMax = np.max(pmfvalue)
+    level = np.arange(int(pmfMin) - 2, int(pmfMax) + 2, 1)
+
+    plt.tricontourf(traj, xibins, pmfvalue, levels=level, cmap='Blues')
+    plt.colorbar()
+    plt.tricontour(traj, xibins, pmfvalue, linestyles='-', levels=level, colors='Black', linewidths=0.2)
+
+    plt.xlabel(r'Time (ps)')
+    plt.ylabel(r'Reaction Coordinate')
+    plot_save('PMF_evolution')
+
+    # 3D plot
+    # print(len(traj), (totalCycle, bins - 1))
+    X = np.reshape(traj, (totalCycle, bins - 1))
+    Y = np.reshape(xibins, (totalCycle, bins - 1))
+    Z = np.reshape(pmfvalue, (totalCycle, bins - 1))
+
+    fig = plt.figure(figsize=(5, 3.75))  # 1.25 * (4,3)
+    ax = fig.gca(projection='3d')
+    ax.plot_surface(X, Y, Z, cmap='Blues', linewidth=0.2, edgecolors='black')
+    ax.view_init(elev=20, azim=30)
+
+    ax.set_xlabel(r'Time (ps)')
+    ax.set_ylabel(r'Reaction Coordinate')
+    ax.set_zlabel(r'Free Energy (kcal/mol)')
+
+    plot_save('PMF_evolution_3D')
 
     # Plot free energy
     plot_parameters('free energy')
@@ -952,7 +951,6 @@ def plot_xi():
 
     timeMax = 0.0
     timeMin = 1E5
-    timeEvolution = ''
     for i in range(length):
         tscolor = (((Tcolor2[0] - Tcolor1[0]) * i / length + 0) / 255.0,
                    ((Tcolor2[1] - Tcolor1[1]) * i / length + 68) / 255.0,
@@ -989,10 +987,10 @@ def plot_xi():
     formatter.set_scientific(True)
     formatter.set_powerlimits((-1, 1))
     for i in range(length):
-        tscolor = (np.int((255. * i / length)) / 255.0,
+        tscolor = (int((255. * i / length)) / 255.0,
                    0.,
-                   (np.int(-255. * i / length + 255)) / 255.0)
-        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor, lw=0.2)
+                   (int(-255. * i / length + 255)) / 255.0)
+        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor)
 
     plt.xlim(0, timeMax)
     plt.xlabel('Time (ps)')
@@ -1005,8 +1003,7 @@ def plot_xi():
 
 def getBasicInfo(path):
     # get the name of submitting script
-    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf', 'sub.pbs', 'fat.yy',
-               'sub.pbc']  # submitting script
+    subList = ['run.sh', 'highcpu', 'fat', 'gpu', 'pbs', 'run.txt', 'sub.lsf', 'sub.pbs', 'fat.yy']  # submitting script
     subName = ''
     subPath = ''
     for i, name in enumerate(subList):
@@ -1027,10 +1024,8 @@ def getBasicInfo(path):
     print('[INFO] Submitting arguments: ')
     cmdLine = ''
     for line in f:
-        if 'python' in line:
+        if line[:6] == 'python':
             cmdLine = line.split()
-            if cmdLine[0] == 'nohup':
-                cmdLine = cmdLine[1:]
     del cmdLine[:2]  # delete `python` and `...rpmdrate.py`
 
     # get the number of cores used
@@ -1038,7 +1033,7 @@ def getBasicInfo(path):
     for i, cmd in enumerate(cmdLine):
         if cmd == '-p':
             cores = cmdLine[i + 1]
-            print('       Cores:            {}'.format(np.int(cores)))
+            print('       Cores:            {}'.format(int(cores)))
             del cmdLine[i:i + 2]
             break
     if cores == 0:
@@ -1053,8 +1048,8 @@ def getBasicInfo(path):
     assert len(cmdLine) == 3, 'Your submitting script may be wrong! '
     global inputFile, temp, Nbeads  # There will be probably more pythonic way. Tell me plz if you know!
     inputFile = cmdLine[0]
-    temp = np.int(cmdLine[1])
-    Nbeads = np.int(cmdLine[2])
+    temp = int(cmdLine[1])
+    Nbeads = int(cmdLine[2])
 
     print('       Temperature:      {} K'.format(temp))
     print('       Number of beads:  {}'.format(Nbeads))
@@ -1077,8 +1072,8 @@ def getUmbrellaInfo(path):
         NtrajList[i] = j + 1 - 15  # 15 info lines # +1 means the number of lines
 
     global Ntraj, NtrajEff
-    Ntraj = np.int(np.max(NtrajList))
-    NtrajEff = np.int(np.min(NtrajList))  # Effective lines
+    Ntraj = int(np.max(NtrajList))
+    NtrajEff = int(np.min(NtrajList))  # Effective lines
     print('       Maximum of trajectories: {}'.format(Ntraj))
     print('       Minimum of trajectories: {}\n'.format(NtrajEff))
 
@@ -1095,30 +1090,16 @@ def getUmbrellaInfo(path):
     for i in range(Nwindows):
         fname = path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[i])
         f = open(fname, 'r').readlines()
-        Nstep = int(f[9].split()[6].replace('(', ''))
 
         for j in range(Ntraj):
             try:
                 line = f[15 + j].split()
-                assert len(line) == 5, print(fname)
-                # umbInfo[:, j, i] = line
-                # re-compute average and variance
-                t = float(line[0])
-                t2 = float(line[1])
-                n = int(line[2])
-                average = t / n
-                variance = t2 / n - average * average
-                umbInfo[0:5, j, i] = [t, t2, n, average, variance]
+                if len(line) != 5:
+                    print(f'{xi_list[i]} has wrong line! ')
+                    raise Exception
+                umbInfo[:, j, i] = line
             except IndexError:
                 umbInfo[:, j, i] = None
-
-        # combine different batches, 2021-06-27 13:44:03 Wenbin, FAN @ SHU
-        for j in range(1, Ntraj):
-            if umbInfo[2, j, i] - umbInfo[2, j - 1, i] != Nstep:
-                for k in range(j):
-                    umbInfo[:3, k, i] += umbInfo[:3, j - 1, i]
-        umbInfo[3, :, i] = umbInfo[0, :, i] / umbInfo[2, :, i]
-        umbInfo[4, :, i] = umbInfo[1, :, i] / umbInfo[2, :, i] - umbInfo[3, :, i] * umbInfo[3, :, i]
 
     return umbInfo
 
@@ -1180,9 +1161,9 @@ def getRate(path):
 
     rateFreeEnergy = - np.log(rateProb) * rateTemp * 1.3806504E-23 / 4.3597447222071E-18  # Hartree
     # # kB = 1.3806504E-23 (J/K), 1 Hartree = 4.3597447222071e-18 (J)
-    rateRPMDfT = rateRPMD * 2 / (2 + 2 * np.exp(- 200.3 / rateTemp))
+    rateRPMDfT = rateRPMD * 2 / (2 + 2 * np.exp(- 205 / rateTemp))
 
-    print('Temperature (K):   \t{:d}'.format(np.int(rateTemp)))
+    print('Temperature (K):   \t{:d}'.format(int(rateTemp)))
     print('xi^ddagger:        \t{:.3f}'.format(rateMaxxi))
     print('delta G (kcal/mol):\t{:.2f}'.format(rateFreeEnergy * 627.509474063056))
     print('k_QTST:            \t{:.2e}'.format(rateQTST))
@@ -1190,7 +1171,7 @@ def getRate(path):
     print('k_RPMD:            \t{:.2e}'.format(rateRPMD))
     print('k_RPMD * f(T):     \t{:.2e}'.format(rateRPMDfT))
 
-    g.write('Temperature (K):   \t{:d}  \n'.format(np.int(rateTemp)))
+    g.write('Temperature (K):   \t{:d}  \n'.format(int(rateTemp)))
     g.write('xi^ddagger:        \t{:.3f}\n'.format(rateMaxxi))
     g.write('delta G (kcal/mol):\t{:.2f}\n'.format(rateFreeEnergy * 627.509474063056))
     g.write('k_QTST:            \t{:.2e}\n'.format(rateQTST))
@@ -1247,7 +1228,6 @@ def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
         for i, line in enumerate(kflines):
             kforce_list[i] = np.float(line.split()[1])
             # print('kforce: {}'.format(kforce_list[i]))
-    xi_list, kforce_list = (list(t) for t in zip(*sorted(zip(xi_list, kforce_list))))
     return xi_list, kforce_list
 
 def computePotentialOfMeanForce(windows=None, xi_min=None, xi_max=None, bins=5000):
@@ -1271,10 +1251,6 @@ def Window(xi, kforce, trajectories, equilibrationTime, evolutionTime):
 def main(inputFolder=None):
     if inputFolder == None:
         inputFolder = input_path()
-
-    if inputFolder[-4:] == r'\fig':
-        inputFolder = inputFolder[:-4]
-
     global figPath
     figPath = os.path.join(inputFolder, 'fig')
     if not os.path.exists(figPath):
@@ -1286,24 +1262,25 @@ def main(inputFolder=None):
     getUmbrellaInfo(path)
     getRate(path)
 
-    # plot
+    # # plot
     plotKForce()
     plot_overlap()
     plot_variance()
+    plot_variance_diff()
     plot_pmf(path)
     plot_rexFactor(path)
     plot_xi()
     plot_deviation()
-    plot_PMF_evolution()
+
+    # plot_PMF_evolution()
     # plot_var_evolution()
     # plot_overlap_density(path)
 
     myEnding()
 
+main()
 
-main(r'C:\Users\60343\Desktop\10K')
-
-# root = r'D:\20210524 HOCO rex\HOCO_30K'
+# root = r'C:\Users\Mike\Desktop\fin-OD-300_2'
 # for dir in os.listdir(root):
 #     print(dir)
 #     main(os.path.join(root, dir))
