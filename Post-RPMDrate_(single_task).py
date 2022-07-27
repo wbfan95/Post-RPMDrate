@@ -1,7 +1,7 @@
 '''
 Author: Wenbin FAN
 First Release: Oct. 30, 2019
-Modified: 2022-07-11 21:19:44 Wenbin FAN @FDU
+Modified: 2022-07-27 15:13:11 Wenbin FAN @FDU
 Verision: 1.8
 
 [Intro]
@@ -59,6 +59,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib import ticker
 import numpy as np
 import pandas as pd
+import scipy.special as scp
 
 color = ['#00447c', '#ae0d16', '#47872c', '#800964']
 # SHU Blue, Weichang Red, Willow Green, SHU Purple
@@ -120,11 +121,44 @@ def my_gaussian(x, xav, xav2):
     y = (1.0 / (np.sqrt(2.0 * np.pi * xav2))) * np.exp(-(x - xav) ** 2 / (2.0 * xav2))
     return y
 
+def overlapArea(a1, v1, a2, v2):
+    eps = 1E-15
+    # variance 2 > 1
+    if abs(v1 - v2) > eps:
+        if v1 > v2:
+            a1, a2 = a2, a1
+            v1, v2 = v2, v1
+
+        delta = (a1 - a2) * (a1 - a2) + (v1 - v2) * np.log(v1 / v2)
+        delta = delta * v1 * v2
+        delta = np.sqrt(delta)
+        bb = a2 * v1 - a1 * v2
+        c1 = (bb + delta) / (v1 - v2)
+        c2 = (bb - delta) / (v1 - v2)
+        assert c1 < c2, "Check the solution of overlapping Gaussian function! "
+        # print(c1, c2)
+
+        S1 = scp.erf((a1 - c1) / np.sqrt(2.0 * v1)) - 1
+        S2 = scp.erf((a2 - c2) / np.sqrt(2.0 * v2)) - scp.erf((a2 - c1) / np.sqrt(2.0 * v2))
+        S3 = -1 - scp.erf((a1 - c2) / np.sqrt(2.0 * v1))
+
+        S = S1 + S2 + S3
+        S = S / (-2.0)
+    else:
+        if a1 > a2:
+            a1, a2 = a2, a1
+
+        c = (a1 + a2) / 2.0
+        # print(c)
+        S = scp.erf((a2 - c) / np.sqrt(2.0 * v1)) - 1
+        S = S * 2 / (-2.0)
+
+    assert S <= 1, "The overlap could never more than 1! "
+    return S
 
 def plot_overlap():
     title = 'Overlap'
-    plot_parameters(title)
-    plt.figure(figsize=(9, 3))
+    plot_parameters(title, width=9)
 
     resolution = 2000
     extend = 0.03  # 3E-2
@@ -171,6 +205,24 @@ def plot_overlap():
     plt.yticks([])  # No ticks and labels in y axis
 
     plt.legend(loc='upper left')
+
+    # overlap ratio
+    xbar = umbInfo[3, NtrajEff - 1, :]
+    xvar = umbInfo[4, NtrajEff - 1, :]
+    # overlapList = (xi_list[:-1] + xi_list[1:]) / 2
+    overlapList = (xbar[:-1] + xbar[1:]) / 2
+    overlapRatio = np.zeros(length - 1)
+    for i in range(length - 1):
+        overlapRatio[i] = overlapArea(xbar[i], xvar[i], xbar[i + 1], xvar[i + 1])
+
+        if overlapRatio[i] > 0.99:
+            print('[WARN] Windows coincide! Check `{}` and `{}`! '.format(xi_list[i], xi_list[i + 1]))
+        # continue
+
+    plotRatio = plt.twinx()
+    plotRatio.plot(overlapList, overlapRatio, 'o-', c=color[1], markersize=2, lw=0.5)
+    plotRatio.axis(ymin=0, ymax=1)
+
     plot_save(title)
 
 
@@ -299,7 +351,6 @@ def plot_variance_diff():
 
         v.append(variance)
 
-
         tscolor = (int((255. * i / length)) / 255.0,
                    0.,
                    (int(-255. * i / length + 255)) / 255.0)
@@ -332,8 +383,21 @@ def plot_variance_diff():
 
     title = 'Variance_diff_box'
     plot_parameters(title, width=8)
-    plt.boxplot(v, positions=xi_list, widths=0.003, labels=None, sym='x')
-    plt.xlim(xiMin, xiMax)
+    for i in range(len(v)):
+        v[i] = np.multiply(v[i], kforce_list[i])
+    plt.boxplot(v, positions=xi_list, widths=0.003, labels=None,
+                whiskerprops={'lw': 0.5},
+                capprops={'lw':0.5},
+                medianprops={'lw':1, 'color': color[1]}, # mean line
+                boxprops={'lw':0.5,},
+                flierprops={'marker': 'o', 'markersize': 1, 'linewidth': 2, 'markeredgecolor': color[0]}
+                )
+    data_range = xiMax - xiMin
+    data_delta = data_range * 0.03
+    plt.xlim(xiMin - data_delta, xiMax + data_delta)
+    # plt.xlim(xiMin, xiMax)
+    plt.ylabel('$\sigma k$')
+    plt.xticks(myticks, myticks)
 
     formatter = ticker.ScalarFormatter(useMathText=True)
     formatter.set_scientific(True)
@@ -484,7 +548,7 @@ def plot_var_evolution():
 
 def plot_deviation():
     title = 'deviation'
-    plot_parameters(title)
+    plot_parameters(title, width=9)
 
     formatter = ticker.ScalarFormatter(useMathText=True)
     formatter.set_scientific(True)
@@ -504,14 +568,14 @@ def plot_deviation():
         var[i] = tmp * kforce_list[i] * 627.509474063056  # to kcal/mol
         # * temp *, no temperature here.
 
-    plt.plot(xi_list, xi_dev, c=color[0])
+    plt.plot(xi_list, xi_dev * kforce_list, c=color[0])
     plt.gca().yaxis.set_major_formatter(formatter)
     plt.xlabel('$\\xi$')
-    plt.ylabel('$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
+    plt.ylabel('$(\\xi_i - \\xi^{\\mathrm{ref}}_i) k_i$')
 
     plot_var = plt.twinx()
-    plot_var.plot(xi_list[0], var[0], c=color[0], label='$\\xi_i - \\xi^{\\mathrm{ref}}_i$')
-    plot_var.plot(xi_list, var, c=color[1], label='$\\sigma_i k_i$')
+    plot_var.plot(xi_list[0], var[0], c=color[0], label='$(\\xi_i - \\xi^{\\mathrm{ref}}_i) k_i$') # for legend
+    plot_var.plot(xi_list, var, 'o-', c=color[1], markersize=2, lw=0.5, label='$\\sigma_i k_i$')
     plot_var.yaxis.set_major_formatter(formatter2)
     plot_var.set_ylabel('$\\sigma_i k_i $ (kcal/mol)')
     # plot_var.set_minorticks_on()
@@ -534,8 +598,8 @@ def plot_pmf(path):
         xi = []
         pmf = []
         for i in fLines[12:-1]:
-            xi.append(np.float(i.split()[0]))
-            pmf.append(np.float(i.split()[1]))
+            xi.append(float(i.split()[0]))
+            pmf.append(float(i.split()[1]))
 
         # Let W(xi=0) = 0!
         xiAbs = np.abs(xi)
@@ -582,7 +646,8 @@ def plot_pmf(path):
         #
         # plt.setp(subfig, xlim=[min(ximax), max(ximax)])
 
-        plt.legend(loc='upper left')
+        # plt.legend(loc='upper left')
+        plt.legend(loc='best')
         plot_save(title)
 
 
@@ -610,8 +675,8 @@ def plot_rexFactor(path):
         kappa = []
         for i in fLines[17:-1]:
             ele = i.split()
-            time.append(np.float(ele[0]))
-            kappa.append(np.float(ele[-1]))
+            time.append(float(ele[0]))
+            kappa.append(float(ele[-1]))
 
         plt.xlabel('$t$ (fs)')
         plt.ylabel('$\kappa(t)$')
@@ -653,7 +718,7 @@ def plot_overlap_density(path):
     # Read time unit
     tempFile = open(path + "\\mbrella_sampling_{0:.4f}.dat".format(xi_list[0]), 'r')
     lines = tempFile.readlines()
-    timeSep = np.float(lines[9].split()[4]) / 1000.0  # to ns
+    timeSep = float(lines[9].split()[4]) / 1000.0  # to ns
 
     z = np.zeros((sizeV * resolution))
     y = np.linspace(xiMin - extend, xiMax + extend, resolution)
@@ -753,7 +818,7 @@ def plot_overlap_density(path):
 
 
 def plotKForce():
-    plot_parameters('force constant')
+    plot_parameters('force constant', width=9)
 
     markerline, stemlines, baseline = \
         plt.stem(xi_list, kforce_list, use_line_collection=True,
@@ -789,7 +854,7 @@ def plotKForce():
     plot_save('kforce')
 
 
-def plot_PMF_evolution():
+def plot_PMF_evolution(plot3D=False):
     if NtrajEff == 1:
         return
 
@@ -814,7 +879,7 @@ def plot_PMF_evolution():
 
     for cycle in range(totalCycle):
         # save 10 PMF figures
-        if True:#(cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
+        if (cycle + 1) % np.ceil(totalCycle / 10) == 0 or cycle == 0 or cycle == totalCycle:
             # for cycle in [-1]:
             print('       Computing PMF evolution {} of {}'.format(cycle + 1, totalCycle))
             N = umbInfo[2, cycle, :]
@@ -883,6 +948,30 @@ def plot_PMF_evolution():
                                                       i, j]))  # time to ns # ps # 2020-05-02 15:44:43 Wenbin, FAN @ SHU
     f.close()
 
+    # Plot free energy
+    plot_parameters('free energy')
+
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    fig.set_figheight(3)
+    fig.set_figwidth(4)
+    ax1.set_xlim(0, np.max(freeEnergy[0, :]))
+
+    ax1.plot(freeEnergy[0, :], freeEnergy[1, :], c=color[0])  # , label='Reaction Coordinate')
+    ax2.plot(freeEnergy[0, :], freeEnergy[2, :], c=color[1], label='Free Energy')
+    ax2.plot(freeEnergy[0, 0], freeEnergy[2, 0], c=color[0], label='Reaction Coordinate')  # fake figure for legend
+
+    ax1.set_xlabel('Time (ps)')
+    ax1.set_ylabel('Reaction Coordinate')  # , color=color[0])
+    ax2.set_ylabel('Free Energy (kcal/mol)')  # , color=color[1])
+
+    ax2.legend(loc='best')
+
+    plot_save('PMF_free_energy')
+
+    if not plot3D:
+        return
+
     # Plot PMF evolution
     plot_parameters('PMF evolution')
 
@@ -921,26 +1010,6 @@ def plot_PMF_evolution():
 
     plot_save('PMF_evolution_3D')
 
-    # Plot free energy
-    plot_parameters('free energy')
-
-    fig, ax1 = plt.subplots()
-    ax2 = ax1.twinx()
-    fig.set_figheight(3)
-    fig.set_figwidth(4)
-    ax1.set_xlim(0, np.max(freeEnergy[0, :]))
-
-    ax1.plot(freeEnergy[0, :], freeEnergy[1, :], c=color[0])  # , label='Reaction Coordinate')
-    ax2.plot(freeEnergy[0, :], freeEnergy[2, :], c=color[1], label='Free Energy')
-    ax2.plot(freeEnergy[0, 0], freeEnergy[2, 0], c=color[0], label='Reaction Coordinate')  # fake figure for legend
-
-    ax1.set_xlabel('Time (ps)')
-    ax1.set_ylabel('Reaction Coordinate')  # , color=color[0])
-    ax2.set_ylabel('Free Energy (kcal/mol)')  # , color=color[1])
-
-    ax2.legend(loc='best')
-
-    plot_save('PMF_free_energy')
 
 
 def plot_xi():
@@ -990,13 +1059,108 @@ def plot_xi():
         tscolor = (int((255. * i / length)) / 255.0,
                    0.,
                    (int(-255. * i / length + 255)) / 255.0)
-        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor)
+        plt.plot(timeEvolution, xiref_evolution[:, i], c=tscolor, lw=0.5, alpha=0.3)
 
     plt.xlim(0, timeMax)
     plt.xlabel('Time (ps)')
     plt.ylabel('$\\xi_i - \\xi_i^{\\mathrm{ref}}$')
     plt.gca().yaxis.set_major_formatter(formatter)
     plot_save('xi-ref_evolution')
+
+    return
+
+def plot_xi_diff():
+    if NtrajEff == 1:
+        return
+
+    title = 'xi_diff'
+    plot_parameters(title)
+
+    xiMin = np.min(xi_list)
+    xiMax = np.max(xi_list)
+    length = len(xi_list)
+
+    timeMax = 0.0
+    timeMin = 1E5
+
+    v = []
+
+    for i in range(length):
+        av = umbInfo[0, :, i]
+        #av2 = umbInfo[1, :, i]
+        timeEvolution = umbInfo[2, :, i]
+
+        Nsample = len(av)
+        mean = np.zeros(Nsample)
+        #variance = np.zeros(Nsample)
+        for j in range(Nsample):
+            if j == 0:
+                dmean = av[0] / timeEvolution[0]
+                mean[j] = dmean
+                ##variance[0] = av2[0] / timeEvolution[0] - dmean * dmean
+            else:
+                dt = timeEvolution[j] - timeEvolution[j-1]
+                dmean = (av[j] - av[j-1])  / dt
+                mean[j] = dmean
+                ##variance[j] = (av2[j] - av2[j-1]) / dt - dmean * dmean
+                # print(i, xi_list[i], variance[j], dt, dmean, av[j], av2[j])
+        mean -= xi_list[i]
+
+        v.append(mean)
+
+        tscolor = (int((255. * i / length)) / 255.0,
+                   0.,
+                   (int(-255. * i / length + 255)) / 255.0)
+
+        timeStep = delta
+        timeEvolution = [x * timeStep for x in timeEvolution]  # 0.1 fs to 1 ns
+
+        plt.plot(timeEvolution, mean, lw=0.2, c=tscolor, alpha=0.4)
+
+        if max(timeEvolution) > timeMax:
+            timeMax = max(timeEvolution)
+        if min(timeEvolution) < timeMin:
+            timeMin = min(timeEvolution)
+
+    plt.xlabel('Time (ps)')
+    plt.ylabel('$\\xi - \\xi ^ {\\mathrm{ref}}$')
+
+    # print(umbInfo[2, 0, 0] * delta * 1E-3, umbInfo[2, -1, 0] * delta * 1E-3)
+    plt.xlim(timeMin, timeMax)
+    # 2 is 3rd column, -1 is the time in last frame, 0 is random (other number is ojbk).
+
+    # Scientific notation for y axis
+    # # plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().yaxis.set_major_formatter(formatter)
+
+    plot_save(title)
+
+    title = 'xi_diff_box'
+    plot_parameters(title, width=8)
+    for i in range(len(v)):
+        v[i] = np.multiply(v[i], kforce_list[i])
+    plt.boxplot(v, positions=xi_list, widths=0.003, labels=None,
+                whiskerprops={'lw': 0.5},
+                capprops={'lw':0.5},
+                medianprops={'lw':1, 'color': color[1]}, # mean line
+                boxprops={'lw':0.5,},
+                flierprops={'marker': 'o', 'markersize': 1, 'linewidth': 2, 'markeredgecolor': color[0]}
+                )
+    data_range = xiMax - xiMin
+    data_delta = data_range * 0.03
+    plt.xlim(xiMin - data_delta, xiMax + data_delta)
+    plt.ylabel('$k (\\xi - \\xi ^ {\\mathrm{ref}})$')
+    plt.xticks(myticks)
+
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-1, 1))
+    plt.gca().yaxis.set_major_formatter(formatter)
+
+    plot_save(title)
 
     return
 
@@ -1063,10 +1227,17 @@ def getUmbrellaInfo(path):
     Nwindows = len(xi_list)
     print('       number of windows: {}'.format(Nwindows))
 
+    Ndigital = 8
+    if os.path.exists(path + "\\umbrella_sampling_{0:.{Ndigital}f}.dat".format(xi_list[0], Ndigital=Ndigital)):
+        Ndigital = 8
+    else:
+        Ndigital = 4
+
     # Count the total lines of xi and xvar
     NtrajList = np.zeros(Nwindows)
     for i in range(Nwindows):
-        with open(path + "\\umbrella_sampling_{0:.4f}.dat".format(xi_list[i]), 'r') as tempFile:
+        umb_path = path + "\\umbrella_sampling_{0:.{Ndigital}f}.dat".format(xi_list[i], Ndigital=Ndigital)
+        with open(umb_path, 'r') as tempFile:
             for j, l in enumerate(tempFile):
                 pass
         NtrajList[i] = j + 1 - 15  # 15 info lines # +1 means the number of lines
@@ -1081,14 +1252,14 @@ def getUmbrellaInfo(path):
     umbInfo = np.zeros((5, Ntraj, Nwindows))  # `5` means five columns in the umbrella info files.
 
     # Read time unit
-    tempFile = open(path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[0]), 'r')
+    tempFile = open(path + "/umbrella_sampling_{0:.{Ndigital}f}.dat".format(xi_list[0], Ndigital=Ndigital), 'r')
     lines = tempFile.readlines()
-    timeSep = np.float(lines[9].split()[4])  # / 1000.0  # to ns # ps # 2020-05-02 15:46:42 Wenbin, FAN @ SHU
+    timeSep = float(lines[9].split()[4])  # / 1000.0  # to ns # ps # 2020-05-02 15:46:42 Wenbin, FAN @ SHU
     tempFile.close()
 
     # Read in all data
     for i in range(Nwindows):
-        fname = path + "/umbrella_sampling_{0:.4f}.dat".format(xi_list[i])
+        fname = path + "/umbrella_sampling_{0:.{Ndigital}f}.dat".format(xi_list[i], Ndigital=Ndigital)
         f = open(fname, 'r').readlines()
 
         for j in range(Ntraj):
@@ -1134,6 +1305,15 @@ def getInput(folder):
     else:
         mylabel = '{} K, {} beads'.format(temp, Nbeads)
 
+    global myticks
+    myticks = []
+    for i in range(len(xi_list)):
+        xi = xi_list[i]
+        m = np.abs(np.mod(xi, 0.1))
+        epsilon = 1e-6
+        if m < epsilon or m > 0.1 - epsilon:
+            myticks.append(xi)
+
 
 def getRate(path):
     print('[INFO] rate coefficients: ')
@@ -1152,12 +1332,12 @@ def getRate(path):
     g = open(os.path.join(figPath, 'my_rate.txt'), 'w')
     fl = f.readlines()
 
-    rateTemp = np.float(fl[4].split()[-2])
-    rateProb = np.float(fl[10].split()[-1])
-    rateMaxxi = np.float(fl[12].split()[-1])
-    rateQTST = np.float(fl[14].split()[-2])
-    rateRex = np.float(fl[17].split()[-1])
-    rateRPMD = np.float(fl[19].split()[-2])
+    rateTemp = float(fl[4].split()[-2])
+    rateProb = float(fl[10].split()[-1])
+    rateMaxxi = float(fl[12].split()[-1])
+    rateQTST = float(fl[14].split()[-2])
+    rateRex = float(fl[17].split()[-1])
+    rateRPMD = float(fl[19].split()[-2])
 
     rateFreeEnergy = - np.log(rateProb) * rateTemp * 1.3806504E-23 / 4.3597447222071E-18  # Hartree
     # # kB = 1.3806504E-23 (J/K), 1 Hartree = 4.3597447222071e-18 (J)
@@ -1210,7 +1390,7 @@ def generateUmbrellaConfigurations(dt, evolutionTime, xi_list, kforce):
     else:
         print('[ERROR] Time unit {} not support and will be regarded as `ps`. '.format(dt[1]))
         delta = dt[0]
-    assert np.float(delta) < 1
+    assert float(delta) < 1
 
 def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
     global xi_list, kforce_list
@@ -1226,7 +1406,7 @@ def conductUmbrellaSampling(dt, windows, saveTrajectories=False):
         kf_list_read = open(kf_path, 'r')
         kflines = kf_list_read.readlines()
         for i, line in enumerate(kflines):
-            kforce_list[i] = np.float(line.split()[1])
+            kforce_list[i] = float(line.split()[1])
             # print('kforce: {}'.format(kforce_list[i]))
     return xi_list, kforce_list
 
@@ -1245,7 +1425,7 @@ def computeRateCoefficient():
 
 
 def Window(xi, kforce, trajectories, equilibrationTime, evolutionTime):
-    return [np.float(xi), np.float(kforce)]
+    return [float(xi), float(kforce)]
 
 
 def main(inputFolder=None):
@@ -1263,24 +1443,25 @@ def main(inputFolder=None):
     getRate(path)
 
     # # plot
-    plotKForce()
-    plot_overlap()
-    plot_variance()
-    plot_variance_diff()
-    plot_pmf(path)
-    plot_rexFactor(path)
+    # plotKForce()
+    # plot_overlap()
+    # plot_variance()
+    # plot_variance_diff()
+    # plot_pmf(path)
+    # plot_rexFactor(path)
     plot_xi()
+    plot_xi_diff()
     plot_deviation()
 
-    # plot_PMF_evolution()
+    plot_PMF_evolution()
     # plot_var_evolution()
     # plot_overlap_density(path)
 
     myEnding()
 
-main()
+main(r'D:\20220607 ohch4 extra\ohch4\Jul24_200_32C_kf1_SSSshortTraj')
 
-# root = r'C:\Users\Mike\Desktop\fin-OD-300_2'
+# root = r'C:\Users\60343\Desktop\fin-OD-300_2'
 # for dir in os.listdir(root):
 #     print(dir)
 #     main(os.path.join(root, dir))
